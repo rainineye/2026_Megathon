@@ -1,0 +1,31 @@
+# per-machine, rebuilt by setup.sh - never commit
+.qmd/
+*.sqlite
+
+# local agent state and permissions can contain API keys or machine paths
+.claude/settings.local.json
+.claude/settings.local.*
+.claude/skills/
+.codex/local*
+
+# Obsidian local UI state (noisy in diffs)
+.obsidian/workspace*.json
+.obsidian/cache
+
+# secrets - never, ever
+.env
+*.env
+*.key
+*.pem
+*.p12
+*.pfx
+*secret*
+*secrets*
+
+# transient API responses / scratch outputs
+cala_resp*.json
+tmp/
+temp/
+
+# OS junk
+.DS_Store

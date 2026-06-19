@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command",
+            "command": "echo 'VAULT MAP:'; ls -1 brain work reference 2>/dev/null; echo '--- north star ---'; head -40 brain/north-star.md 2>/dev/null" }
+        ]
+      }
+    ]
+  }
+}
