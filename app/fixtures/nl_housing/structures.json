@@ -1,0 +1,77 @@
+{
+  "claim": [
+    "mortgage_rate",
+    "house_price"
+  ],
+  "asserted": [
+    [
+      "dep",
+      "mortgage_rate",
+      "house_price",
+      []
+    ]
+  ],
+  "observed": [
+    "mortgage_rate",
+    "borrowing_capacity",
+    "house_price",
+    "housing_shortage"
+  ],
+  "unobserved": [
+    "growth"
+  ],
+  "structures": [
+    {
+      "id": "S1_demand_channel",
+      "author": "general-rule:OFR",
+      "directed": [
+        [
+          "mortgage_rate",
+          "borrowing_capacity"
+        ],
+        [
+          "borrowing_capacity",
+          "house_price"
+        ]
+      ],
+      "bidirected": [],
+      "undirected": []
+    },
+    {
+      "id": "S2_growth_confounder",
+      "author": "general-rule:VisualCapitalist",
+      "directed": [
+        [
+          "growth",
+          "mortgage_rate"
+        ],
+        [
+          "growth",
+          "house_price"
+        ]
+      ],
+      "bidirected": [],
+      "undirected": []
+    },
+    {
+      "id": "S3_supply_amplified",
+      "author": "general-rule:EconomicsHelp",
+      "directed": [
+        [
+          "mortgage_rate",
+          "borrowing_capacity"
+        ],
+        [
+          "borrowing_capacity",
+          "house_price"
+        ],
+        [
+          "housing_shortage",
+          "house_price"
+        ]
+      ],
+      "bidirected": [],
+      "undirected": []
+    }
+  ]
+}

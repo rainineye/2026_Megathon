@@ -1,0 +1,5 @@
+# Trace Personal — engine API (warm local FastAPI server)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+# pydantic ships with fastapi; pinned here for clarity
+pydantic>=2.6

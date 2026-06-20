@@ -1,0 +1,380 @@
+[
+  {
+    "id": "ev_int_1a4cc7b4",
+    "source_conf": 0.85,
+    "cala_fact_id": "0377f9f3-7ae0-4cff-98ad-e63afe64642f",
+    "source_name": "IMF Executive Board concludes 2025 Article IV Consultation with the Netherlands – INSIGHT EU MONITORING",
+    "source_url": "https://ieu-monitoring.com/editorial/imf-executive-board-concludes-2025-article-iv-consultation-with-the-netherlands/838740",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "shortage_dominates",
+        "s": 0.148,
+        "text": "In its July 2025 Article IV Consultation, the IMF emphasized the need for structural reforms, including fostering investment to increase housing supply and implementing growth‑enhancing tax reforms, t",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_gri_a269f372",
+    "source_conf": 0.85,
+    "cala_fact_id": "0b2b6f8d-68a0-4f13-808b-de66fe47a848",
+    "source_name": "Major cities fear stagnation in housing construction due to grid congestion",
+    "source_url": "https://openrijk.nl/en/gemeenten/gemeente-utrecht/artikel/grote-steden-vrezen-voor-stilstand-woningbouw-door-netcongestie/major-cities-fear-stagnation-in-housing-construction-due-to-grid-congestion",
+    "claim_kind": "causal_token",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "shortage_dominates",
+        "s": 0.41,
+        "text": "A new prioritisation framework from the ACM, effective 1 January 2026, forces housing projects to compete with industry for scarce grid capacity, placing housing lower on the priority list and further",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_gri_aedd77c9",
+    "source_conf": 0.85,
+    "cala_fact_id": "ac7a7c23-27a3-42ea-b1a2-b5b3e43ecd8a",
+    "source_name": "Rotterdam Introduces Waiting List for New Electricity Connections Amid Grid Congestion",
+    "source_url": "https://openrijk.nl/en/municipalities/municipality-of-rotterdam/article/rotterdam-introduces-waiting-list-for-new-electricity-connections-amid-grid-congestion",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "reveals_a_preference",
+        "target": "shortage_dominates",
+        "s": 0.148,
+        "text": "Municipalities such as Rotterdam and Amsterdam have introduced waiting lists for new electricity connections from 1 July 2026, meaning residential developers must wait for grid space before constructi",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_rul_f9a5fa19",
+    "source_conf": 0.85,
+    "cala_fact_id": "f930e7cd-6846-4c31-a96b-1cc7f08aff05",
+    "source_name": "Rent, House Prices, and Demographics - Treasury Department",
+    "source_url": "https://home.treasury.gov/news/featured-stories/rent-house-prices-and-demographics",
+    "claim_kind": "causal_token",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "shortage_dominates",
+        "s": 0.18,
+        "text": "An aging population increases per‑person housing demand because older adults are more likely to head their own households, as shown by the rise in the 55‑plus share from 20% to 30% and the associated ",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_gri_b843fc5c",
+    "source_conf": 0.85,
+    "cala_fact_id": "0b2b6f8d-68a0-4f13-808b-de66fe47a848",
+    "source_name": "Major cities fear stagnation in housing construction due to grid congestion",
+    "source_url": "https://openrijk.nl/en/gemeenten/gemeente-utrecht/artikel/grote-steden-vrezen-voor-stilstand-woningbouw-door-netcongestie/major-cities-fear-stagnation-in-housing-construction-due-to-grid-congestion",
+    "claim_kind": "causal_type",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "shortage_dominates",
+        "s": 0.18,
+        "text": "The four largest cities (Amsterdam, Rotterdam, The Hague, Utrecht) warn that without clear national coordination the construction of more than 160,000 homes and associated facilities is at risk, linki",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_mon_8ab6486f",
+    "source_conf": 0.85,
+    "cala_fact_id": "2f28d2a7-a5ed-4768-8c2c-2f9d2ff41d32",
+    "source_name": "The Dutch housing market shows resilience | ABN AMRO",
+    "source_url": "https://www.abnamro.com/en/news/the-dutch-housing-market-shows-resilience-in-the-face-of-global-uncertainty",
+    "claim_kind": "causal_token",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "financing_pressure",
+        "s": 0.5,
+        "text": "ABN AMRO attributed its 2025 house‑price growth forecast (7‑8%) primarily to falling mortgage interest rates, alongside income growth and a housing shortage.",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_int_8656d948",
+    "source_conf": 0.85,
+    "cala_fact_id": "3819a8be-d772-4397-91e6-a0a45b1356d1",
+    "source_name": "Monitor on mortgage lending standards and financial stability 2026",
+    "source_url": "https://www.dnb.nl/media/cvfhqws0/86281_2600115_dnb_brochure-fs-monitor_engels_web.pdf",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "financing_pressure",
+        "s": 0.148,
+        "text": "The joint DNB‑AFM 2026 monitor confirms that the Dutch housing market remains tight, shows signs of overvaluation, and that household mortgage debt stays high relative to other countries, reinforcing ",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_pol_7378d77c",
+    "source_conf": 0.85,
+    "cala_fact_id": "b614dd96-a089-4ae9-8e0b-d625013cb7ed",
+    "source_name": "[PDF] Mortgage interest tax deduction in the Netherlands - a welcome relief",
+    "source_url": "https://www.bis.org/review/r190712c.pdf",
+    "claim_kind": "causal_type",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "financing_pressure",
+        "s": 0.18,
+        "text": "In 2011 the mortgage interest deduction provided a tax advantage of about €14 billion (≈2.5 % of GDP), illustrating the large scale of the subsidy and its contribution to macro‑economic volatility.",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_int_9c2e583a",
+    "source_conf": 0.85,
+    "cala_fact_id": "35c8d760-0ef6-4f5b-98c9-df65f19849c7",
+    "source_name": "Assessment of the Dutch notification in accordance with Article ...",
+    "source_url": "https://www.esrb.europa.eu/pub/pdf/other/esrb.opinion241028_report~29d9b314d3.en.pdf",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "financing_pressure",
+        "s": 0.148,
+        "text": "The ESRB issued a September 2016 warning to the Netherlands highlighting high mortgage loan indebtedness, very high LTV ratios, and a large share of borrowers who would be underwater if house prices f",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_int_9fcdf34d",
+    "source_conf": 0.85,
+    "cala_fact_id": "9e8a81f1-ed37-41e1-aba3-63c539ca046f",
+    "source_name": "[PDF] Financial Stability Review May 2014 - European Central Bank",
+    "source_url": "https://www.ecb.europa.eu/press/financial-stability-publications/fsr/shared/pdf/sfafinancialstabilityreview201405en.pdf",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "financing_pressure",
+        "s": 0.148,
+        "text": "The ECB’s May 2014 Financial Stability Review identified rising household debt, high LTV ratios and a high use of interest‑only loans in the Netherlands, noting that about 30 % of homeowners were unde",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_mar_6df79eaf",
+    "source_conf": 0.85,
+    "cala_fact_id": "6b2f49cd-3e3e-4c12-8bb1-54e34ecebbcc",
+    "source_name": "Housing Market Quarterly: House prices will rise slightly this year - Rabobank",
+    "source_url": "https://www.rabobank.com/knowledge/d011517250-housing-market-quarterly-house-prices-will-rise-slightly-this-year",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "breaks_a_story",
+        "target": "investor_window",
+        "s": 0.28,
+        "text": "For 2026, Rabobank revises its price outlook to a more modest 3.1 % increase (down from earlier higher estimates) and projects a decline in transactions to 210 000 by 2027, reflecting the expected dry",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_ene_f33729b8",
+    "source_conf": 0.85,
+    "cala_fact_id": "fea5f153-9b3e-4222-ae87-c1e1e99b7a79",
+    "source_name": "Government Subsidies & Insights For Energy Labels in the Netherlands",
+    "source_url": "https://www.starterwoning.com/en/post/government-subsidies-insights-for-energy-labels-in-nl",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "breaks_a_story",
+        "target": "investor_window",
+        "s": 0.148,
+        "text": "Energy labels are mandatory for all houses and apartments when built, sold, or rented, and the label remains valid for ten years, ensuring that the label information is always available to buyers and ",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_int_e0d77010",
+    "source_conf": 0.6,
+    "cala_fact_id": "a4d0d0f2-b679-4821-aba0-b7ba86e85a18",
+    "source_name": "Europe rent surge: Which countries saw the biggest increases in 2025?",
+    "source_url": "https://finance.yahoo.com/economy/articles/europe-rent-surge-countries-saw-050120401.html",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "investor_window",
+        "s": 0.5,
+        "text": "EU rent inflation averaged 3.1% in 2025, with many major economies (Germany 2.1%, France 2.3%, Spain 2.4%) below the EU average, implying Dutch rent growth is similarly modest and below the EU mean.",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
+    "id": "ev_pol_93e86346",
+    "source_conf": 0.6,
+    "cala_fact_id": "86634fd5-4ede-48de-aa80-207e735d6b67",
+    "source_name": "Waarom de Wet betaalbare huur een foute wet is - EW",
+    "source_url": "https://www.ewmagazine.nl/politiek/news/2025/08/wet-betaalbare-huur-een-foute-wet-1496451",
+    "claim_kind": "causal_token",
+    "inferences": [
+      {
+        "label": "breaks_a_story",
+        "target": "investor_window",
+        "s": 0.28,
+        "text": "Investor activity data for Q2 2025 shows investors bought about 7,800 homes but sold 16,400, a widening gap that reflects landlords exiting the market because regulated rents lower returns.",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
+    "id": "ev_soc_bd1229dc",
+    "source_conf": 0.6,
+    "cala_fact_id": "c80a32e3-0fc9-47d4-9017-46a681dca0ae",
+    "source_name": "Housing shortage in Netherlands to reach 453,000 by 2027, experts warn | NL Times",
+    "source_url": "https://nltimes.nl/2025/04/22/housing-shortage-netherlands-reach-453000-2027-experts-warn",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "investor_window",
+        "s": 0.5,
+        "text": "The two‑year social rent freeze (2025‑2026) is expected to cut 170,000 social rental homes and create a €47.4 billion capital‑investment shortfall, equivalent to 181,000 new homes or sustainability up",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
+    "id": "ev_int_55a7f1f5",
+    "source_conf": 0.6,
+    "cala_fact_id": "1029ae8a-61a3-4e60-94d9-9297422a1036",
+    "source_name": "House prices across Europe: Which countries saw the highest rises ...",
+    "source_url": "https://finance.yahoo.com/news/house-prices-across-europe-countries-050131952.html",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "regional_divergence",
+        "s": 0.18,
+        "text": "EU house prices rose by 5.5% in Q4 2025 versus the same period in 2024, establishing a broad upward trend across the region.",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
+    "id": "ev_mar_9e8ce1df",
+    "source_conf": 0.85,
+    "cala_fact_id": "10f8d38d-c1f7-465c-a3b2-b2500802cfd6",
+    "source_name": "Regional house price differences are widening - Rabobank",
+    "source_url": "https://www.rabobank.com/knowledge/d011325612-regional-house-price-differences-are-widening",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "user_constraint",
+        "s": 0.148,
+        "text": "The persistence of strong overbidding is evidenced by statements that buyers are willing to submit offers well above asking prices across many regions, a trend noted in the market analysis.",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
+    "id": "ev_pol_e970d75a",
+    "source_conf": 0.6,
+    "cala_fact_id": "686aa524-2360-4b69-afe5-2de63d9f8e80",
+    "source_name": "Dutch Transfer Tax Exemption for First-Time Buyers Increases to €555,000 in 2026 | Your Dutch Home",
+    "source_url": "https://yourdutchhome.com/40-af6a-18/news/dutch-transfer-tax-exemption-for-first-time-buyers-increases-to-555000-in-2026",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "user_constraint",
+        "s": 0.5,
+        "text": "Increasing the first‑time‑buyer exemption ceiling to €555 000 in 2026 expands the pool of buyers who avoid transfer tax, reinforcing the upward pressure on prices.",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
+    "id": "ev_mar_ac2675ce",
+    "source_conf": 0.6,
+    "cala_fact_id": "b7681d83-4d24-4610-b040-4a11ab614139",
+    "source_name": "Dutch Housing Prices Expected to Rise Over 11% in the Coming Year",
+    "source_url": "https://huiskoopwijzer.nl/en/blog/dutch-housing-prices-forecast-september-2025",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "user_constraint",
+        "s": 0.5,
+        "text": "The price growth forecasts for 2025 and 2026 for each bank are taken directly from the bank‑specific forecast tables, which list ABN AMRO (+7.0 % / +3.0 %), Rabobank (+8.6 % / +5.5 %), ING (+5.5 % / +",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
+    "id": "ev_dem_4f53e75e",
+    "source_conf": 0.6,
+    "cala_fact_id": "5804ca72-e785-4356-9440-3b59348aa8a0",
+    "source_name": "More expats are buying homes in the Netherlands – Holland Times",
+    "source_url": "https://www.hollandtimes.nl/2025-edition-7-october-2025/more-expats-are-buying-homes-in-the-netherlands",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "reveals_a_preference",
+        "target": "user_constraint",
+        "s": 0.148,
+        "text": "Expats and international students bought almost twice as many Dutch homes in 2025 as five years earlier, concentrating purchases in major cities, showing foreign buyers as a significant demand factor.",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
+    "id": "ev_mar_bcd24013",
+    "source_conf": 0.6,
+    "cala_fact_id": "b7681d83-4d24-4610-b040-4a11ab614139",
+    "source_name": "Dutch Housing Prices Expected to Rise Over 11% in the Coming Year",
+    "source_url": "https://huiskoopwijzer.nl/en/blog/dutch-housing-prices-forecast-september-2025",
+    "claim_kind": "non_causal",
+    "inferences": [
+      {
+        "label": "breaks_a_story",
+        "target": "user_constraint",
+        "s": 0.28,
+        "text": "All major banks agree that price growth will continue in 2026 but at a slower pace than in 2025, as indicated by their respective 2026 forecasts and the qualitative commentary on a cooling market.",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  }
+]

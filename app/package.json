@@ -1,0 +1,25 @@
+{
+  "name": "trace-personal-market-tool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop decision cockpit for evidence-backed personal market decisions.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "api:dev": "python -m uvicorn server:app --app-dir engine --port 8000 --reload",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "engine:demo": "python engine/run_demo.py"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0"
+  }
+}

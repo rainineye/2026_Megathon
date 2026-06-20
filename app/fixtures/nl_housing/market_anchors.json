@@ -1,0 +1,22 @@
+{
+  "_note": "Real market reference values seeded from Trace_Core nl_housing_timeseries.json (Cala-derived). Every anchor carries evidence_id + source_name. Personal Fit uses these as context; the user supplies their own budget/down-payment/quoted-rate. NO mortgage-rate LEVEL exists in the timeseries (only ecb_deposit_rate) -> quoted_mortgage_rate is a USER INPUT.",
+  "anchors": {
+    "nhg_limit_eur": {"value": 450000, "period": "2025", "evidence_id": "ev_nhg_64fa1c88", "source_name": "Limit for a National Mortgage Guarantee to be raised to 450,000 euros"},
+    "transfer_tax_ftb_ceiling_eur": {"value": 555000, "period": "2026", "evidence_id": "ev_pol_e970d75a", "source_name": "Dutch Transfer Tax Exemption for First-Time Buyers Increases to 555,000"},
+    "ecb_deposit_rate_pct": {"value": 2.25, "period": "2025", "evidence_id": "ev_mon_b34ba17f", "source_name": "Your borrowing power for a mortgage in the Netherlands in 2025"},
+    "house_price_index_yoy_pct": {"value": 8.6, "period": "2025-07", "evidence_id": "ev_mar_9fd5a848", "source_name": "Quarterly report housing market | SlimBieden"},
+    "bank_price_forecast_2026_pct": {"value": 3.1, "period": "2026", "evidence_id": "ev_mar_6df79eaf", "source_name": "Housing Market Quarterly: House prices will rise slightly this year (Rabobank revised)"},
+    "avg_transaction_price_eur": {"value": 467873, "period": "2025-03", "evidence_id": "ev_mon_7c966b8d", "source_name": "Woningprijzen in Nederland blijven stijgen"},
+    "single_buyer_extra_capacity_eur": {"value": 17000, "period": "2025", "evidence_id": "ev_nhg_f67170d9", "source_name": "Dutch housing market update: what is changing in 2025 - DutchNews"},
+    "housing_shortage_homes": {"value": 453000, "period": "2027", "evidence_id": "ev_sup_800a01f2", "source_name": "Why is there a housing shortage in the Netherlands?"},
+    "box3_effective_wealth_tax_pct": {"value": 2.25, "period": "2025", "evidence_id": "ev_pol_4b9c02d0", "source_name": "Property Investment in the Netherlands: Income Tax guide"}
+  },
+  "price_drift_scenarios_pct": {
+    "_note": "Annualized price drift per market state, sourced from real bank forecasts; used to bound opportunity-cost-of-waiting. Weighted at runtime by the engine's real candidate_support distribution.",
+    "shortage_dominates": {"value": 8.6, "basis": "house_price_index_yoy 2025-07", "evidence_id": "ev_mar_9fd5a848"},
+    "financing_pressure": {"value": 3.1, "basis": "Rabobank 2026 revised forecast", "evidence_id": "ev_mar_6df79eaf"},
+    "regional_divergence": {"value": 3.1, "basis": "national forecast floor (region-specific not in fixtures)", "evidence_id": "ev_mar_6df79eaf"},
+    "investor_window": {"value": 3.0, "basis": "ABN AMRO 2026 +3.0%", "evidence_id": "ev_mar_6df79eaf"},
+    "user_constraint": {"value": 3.1, "basis": "national forecast (market-neutral for this state)", "evidence_id": "ev_mar_6df79eaf"}
+  }
+}

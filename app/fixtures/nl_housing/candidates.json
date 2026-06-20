@@ -1,0 +1,22 @@
+[
+  {
+    "id": "shortage_dominates",
+    "label": "Structural shortage keeps upward pressure"
+  },
+  {
+    "id": "financing_pressure",
+    "label": "Financing pressure cools demand"
+  },
+  {
+    "id": "investor_window",
+    "label": "Investor sell-off creates a temporary buyer window"
+  },
+  {
+    "id": "regional_divergence",
+    "label": "Regional divergence dominates the national trend"
+  },
+  {
+    "id": "user_constraint",
+    "label": "User constraints dominate market timing"
+  }
+]

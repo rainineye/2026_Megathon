@@ -6,6 +6,7 @@
 .claude/settings.local.json
 .claude/settings.local.*
 .claude/skills/
+.claude/launch.json
 .codex/local*
 
 # Obsidian local UI state (noisy in diffs)
@@ -24,8 +25,17 @@
 
 # transient API responses / scratch outputs
 cala_resp*.json
+.cala_tmp/
 tmp/
 temp/
+
+# app build outputs and dependencies
+app/node_modules/
+app/dist/
+app/dist-electron/
+app/.vite/
+__pycache__/
+*.pyc
 
 # OS junk
 .DS_Store

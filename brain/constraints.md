@@ -15,3 +15,4 @@ type: constraints
 - FORBID: .env
 - FORBID: secrets
 - FORBID: force-push
+- FORBID: hardcoded/placeholder evidence in any number shown to the user — every figure must trace to real data (Cala output / `fixtures/nl_housing/*` / a tool-fetched source with url). `run_demo.py`'s `build_default_case()` + `build_structured_case()` are hand-typed placeholders and must NOT be used to produce user-facing numbers.

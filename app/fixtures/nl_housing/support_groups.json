@@ -1,0 +1,63 @@
+[
+  {
+    "target": "shortage_dominates",
+    "topology": "Convergence",
+    "members": [
+      "ev_int_1a4cc7b4",
+      "ev_gri_a269f372",
+      "ev_gri_aedd77c9",
+      "ev_rul_f9a5fa19",
+      "ev_gri_b843fc5c"
+    ],
+    "independence_factor": 0.85,
+    "chain_order": []
+  },
+  {
+    "target": "financing_pressure",
+    "topology": "Convergence",
+    "members": [
+      "ev_mon_8ab6486f",
+      "ev_int_8656d948",
+      "ev_pol_7378d77c",
+      "ev_int_9c2e583a",
+      "ev_int_9fcdf34d"
+    ],
+    "independence_factor": 0.85,
+    "chain_order": []
+  },
+  {
+    "target": "investor_window",
+    "topology": "Convergence",
+    "members": [
+      "ev_mar_6df79eaf",
+      "ev_ene_f33729b8",
+      "ev_int_e0d77010",
+      "ev_pol_93e86346",
+      "ev_soc_bd1229dc"
+    ],
+    "independence_factor": 0.85,
+    "chain_order": []
+  },
+  {
+    "target": "regional_divergence",
+    "topology": "Corroboration",
+    "members": [
+      "ev_int_55a7f1f5"
+    ],
+    "independence_factor": 0.85,
+    "chain_order": []
+  },
+  {
+    "target": "user_constraint",
+    "topology": "Convergence",
+    "members": [
+      "ev_mar_9e8ce1df",
+      "ev_pol_e970d75a",
+      "ev_mar_ac2675ce",
+      "ev_dem_4f53e75e",
+      "ev_mar_bcd24013"
+    ],
+    "independence_factor": 0.85,
+    "chain_order": []
+  }
+]
