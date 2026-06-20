@@ -1,70 +1,132 @@
-# Shared memory layer (hackathon vault)
+# Trace Personal — a decision-intelligence cockpit
 
-A "memory hardness" setup for a project two people build together with two agents
-(Claude Code + Codex). The goal: neither a human nor an agent re-litigates a settled
-decision, and the memory survives crashes, new sessions, and the other person's machine.
+> It looks like a market dashboard, but behaves like an auditable argument.
 
-## The model (one diagram in words)
+A desktop/web **decision cockpit** for high-stakes personal market decisions. It fuses
+three things in one workspace — **public facts/evidence**, **expert judgment**, and the
+user's **personal variables** — and runs them through the deterministic **Trace engine**
+to show *which market states are plausible*, *how strong the evidence is*, *what is still
+unsettled*, and *what this specific user should do about it*.
+
+It is **not** a black box that predicts prices. It is an evidence-first workspace that
+shows the distribution of market states, the chains behind them, the points of dispute,
+the user's personal exposure, and an actionable, traceable recommendation.
+
+**Demo case — Netherlands housing:** *Should I buy a home in the Netherlands in the next
+6 months, wait 6–12 months, or keep renting while watching specific signals?*
+
+---
+
+## Why it's different
+
+- **Distribution over single answer** — competing market states (structural shortage,
+  financing pressure, investor sell-off window, regional divergence, user-constraint), not
+  one forecast.
+- **Three axes never collapsed** — *support* (relative), *coverage* (absolute strength),
+  and *credibility* (controlled / uncontrolled source position) are shown separately. A
+  thing isn't "true" just because there's lots of evidence.
+- **Causal honesty** — causal claims return `graph_not_settled` + the test that would
+  settle them, instead of pretending a correlation is a cause.
+- **Personalization without pretending certainty** — the user's budget, deposit, monthly
+  ceiling and quoted mortgage rate drive a transparent exposure layer; they change the
+  *advice*, never the *evidence*.
+- **Real-data-only** — every number shown to the user traces to real data (sourced Cala
+  evidence → canonical fixtures → the engine). Hand-typed placeholders are forbidden.
+
+---
+
+## Architecture
 
 ```
-        shared markdown (git)            <-- single source of truth
-        brain/ work/ reference/
-                |
-       git push / pull (you <-> friend)
-                |
-   per-machine qmd index (~/.cache/qmd)  <-- disposable, rebuilt from markdown
-                |
-   mcp__qmd__query in every session
-                |
-   Claude Code (CLAUDE.md) + Codex (AGENTS.md)
+ Evidence assembly            Deterministic engine (Trace)        Product
+ ─────────────────            ────────────────────────────        ───────
+ Cala sourced facts     ┐     trace_engine.py   (default tier)    Decision Brief
+ canonical claims       ├──►  trace_structured.py(structured)  ─► Market Map
+ expert assumptions     │     trace_bridge.py    (bridge)          Evidence Board
+ personal variables     ┘     + personal_fit.py  (exposure)        Personal Fit · Action Plan
+        static fixtures              HTTP API (FastAPI :8000)       React cockpit (Vite :5173)
 ```
 
-Three properties make it "hard":
+- **Frontend** — Vite + React + TypeScript cockpit (`app/src`), calls the engine over HTTP.
+- **Engine API** — FastAPI + uvicorn warm server (`app/engine/server.py`) exposing
+  `/api/run-default-tier · run-structured-tier · run-bridge · run-personal-advice`.
+- **Engine** — the Trace core protocol (`trace_engine / trace_structured / trace_bridge`)
+  computes distribution / coverage / credibility / claim_resolution / gap diagnostics.
+- **Fixtures** — `app/fixtures/nl_housing/*` seeded from canonical, Cala-derived data so
+  the demo runs offline with no live feeds.
+- Desktop shell (Electron/Tauri) is an optional later wrapper; the cockpit demos in a browser.
 
-1. **Source of truth is git-tracked markdown**, not anyone's context window or local
-   index. Crash, new session, or new laptop — the memory is still there on pull.
-2. **Read-before-act / write-after-decide** is written into `CLAUDE.md` + `AGENTS.md`,
-   so both agents query prior decisions before acting and persist new ones after.
-3. **Append-only decision log** in `brain/decisions.md` — two people committing to an
-   append-only log almost never merge-conflict. Rewrites do. So we never rewrite.
+---
 
-## Install (each person, once)
+## Quickstart
+
+Requirements: Python ≥ 3.10, Node ≥ 18.
 
 ```bash
-# drop these files into your vault root, then:
-chmod +x setup.sh
-./setup.sh                 # installs qmd, indexes the vault, downloads ~2GB models
-qmd query "what did we decide about project memory"   # smoke test
+# 1. engine API (warm, deterministic) — from app/
+pip install -r app/requirements.txt
+python -m uvicorn server:app --app-dir app/engine --host 127.0.0.1 --port 8000
+#   → http://127.0.0.1:8000/docs   (interactive API)  ·  /api/health
+
+# 2. cockpit UI — in a second terminal
+cd app && npm install && npm run dev
+#   → http://127.0.0.1:5173        (the actual interface)
 ```
 
-Requirements: Node ≥ 22 **or** Bun ≥ 1.0 (setup.sh installs Bun if neither exists),
-~2GB disk for local models. No API key — qmd runs entirely on your machine.
+`:8000` is the engine API (no UI of its own). `:5173` is the cockpit.
 
-MCP is already wired for Claude Code via `./.mcp.json` (loaded automatically when you
-run `claude` here). Codex reads `AGENTS.md`.
+> On Windows with a space in the project path, the bundled `.claude/launch.json`
+> preview launcher may fail to start node servers — run the commands above in a terminal
+> instead. See `brain/gotchas.md`.
 
-## What's in here
+---
 
-| Path | Role |
-| --- | --- |
-| `setup.sh` | per-machine install + index (re-runnable) |
-| `.mcp.json` | registers the qmd MCP server for Claude Code |
-| `CLAUDE.md` | the session memory contract (read/write/forbid rules) |
-| `AGENTS.md` | mirror of the rules for Codex |
-| `.claude/settings.json` | SessionStart hook: injects the vault map each session |
-| `brain/north-star.md` | scope, deadline, non-goals — read first every session |
-| `brain/decisions.md` | append-only decision log (the shared memory) |
-| `brain/constraints.md` | hard rules; `FORBID:` lines gate agent actions |
-| `brain/gotchas.md` | traps, so they're hit at most once |
-| `.gitignore` | commits markdown + config; never the local index or `.env` |
+## Repo layout
 
-## Notes
+```
+app/                 the MVP application
+  src/               React + TS cockpit (Decision Brief, Market Map, …)
+  engine/            Trace engine + server.py (FastAPI) + fixtures_loader + personal_fit
+  fixtures/nl_housing/  candidates · evidence · support_groups · structures ·
+                        personal_profiles · market_anchors  (canonical, Cala-derived)
+brain/               shared-memory vault (see below): north-star · decisions · constraints · gotchas
+work/                PRD, design/research notes, factor research
+reference/           stable architecture facts
+SECURITY.md          what must never be committed (keys, local agent state)
+```
 
-- This is the **session-level** memory layer. It's the foundation the hardened agentic
-  loop (`hard_loop.py`) sits on: that loop's `memory_search()` calls the same `qmd`,
-  so once this is indexed, the loop does real semantic recall instead of grep fallback.
-- Prefer a **project-local** collection config if you'd rather keep it in git: qmd
-  supports `.qmd/index.yaml` in addition to the global `~/.config/qmd/index.yml`.
-  Confirm the schema against qmd's `example-index.yml` before relying on it.
-- First fill in `brain/north-star.md`. An empty north star means the agents have
-  nothing to anchor to and will drift.
+The deterministic engine and the full Cala data pipeline (evidence → timeseries →
+canonical) live in a **separate `Trace_Core` repository**; `app/fixtures/` holds the
+seeded snapshot this app reads.
+
+---
+
+## Shared-memory vault (`brain/`)
+
+This repo is also a "memory-hardness" setup: two people + two agents (Claude Code + Codex)
+share **one brain**, so nobody re-litigates a settled decision. Markdown-in-git is the
+single source of truth.
+
+- `brain/north-star.md` — what we're building, the deadline, non-goals (read first).
+- `brain/decisions.md` — **append-only** decision log (never rewrite a past line).
+- `brain/constraints.md` — hard rules; `FORBID:` lines are absolute.
+- `brain/gotchas.md` — traps, recorded so they're hit at most once.
+
+The contract for agents lives in `CLAUDE.md` / `AGENTS.md`. Append-only logs almost never
+merge-conflict between collaborators — that's what keeps the shared memory durable.
+
+---
+
+## Security
+
+API keys, `.env`, and local agent state (`.claude/settings.local.json`) are **never**
+committed — see `SECURITY.md` and `.gitignore`. Run the documented secret scan before
+pushing. The Trace engine is fully local; the demo needs no API key to run.
+
+---
+
+## Status
+
+Hackathon MVP. The Decision Brief renders live deterministic engine output; some cockpit
+surfaces (Market Map, Evidence Board, parts of Personal Fit) are still wireframe placeholders
+pending wiring — tracked in `brain/gotchas.md`. **Not for production financial/legal/tax advice.**
