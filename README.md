@@ -50,8 +50,9 @@ the user's personal exposure, and an actionable, traceable recommendation.
 - **Frontend** — Vite + React + TypeScript cockpit (`app/src`), calls the engine over HTTP.
 - **Engine API** — FastAPI + uvicorn warm server (`app/engine/server.py`) exposing
   `/api/run-default-tier · run-structured-tier · run-bridge · run-personal-advice`.
-- **Engine** — the Trace core protocol (`trace_engine / trace_structured / trace_bridge`)
-  computes distribution / coverage / credibility / claim_resolution / gap diagnostics.
+- **Engine** — the Trace core engine computes distribution / coverage / credibility /
+  claim_resolution / gap diagnostics. *(Proprietary — the engine implementation is **not
+  included** in this repository; it is loaded locally.)*
 - **Fixtures** — `app/fixtures/nl_housing/*` seeded from canonical, Cala-derived data so
   the demo runs offline with no live feeds.
 - Desktop shell (Electron/Tauri) is an optional later wrapper; the cockpit demos in a browser.
