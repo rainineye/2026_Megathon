@@ -8,6 +8,11 @@
   text-rendering: geometricPrecision;
 }
 
+html,
+#root {
+  height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -15,7 +20,9 @@
 body {
   margin: 0;
   min-width: 1180px;
+  height: 100%;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 button,
@@ -562,7 +569,7 @@ section {
 .evidence-row {
   display: grid;
   gap: 0;
-  grid-template-columns: 1fr 2fr 0.8fr 1.2fr 0.75fr;
+  grid-template-columns: 1fr 2fr 0.55fr 0.9fr 1.2fr 0.55fr;
 }
 
 .table-head {
@@ -680,8 +687,118 @@ pre {
   padding-left: 18px;
 }
 
+.source-list li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .source-list a {
   color: #16796e;
   font-weight: 700;
   text-decoration: none;
+}
+
+.source-badge {
+  border: 1px solid #ccd6d2;
+  border-radius: 999px;
+  color: #50615b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.source-badge.cala {
+  background: #e9f8f3;
+  border-color: #8ecfbe;
+  color: #0f6f63;
+}
+
+.source-badge.web {
+  background: #f2f0ff;
+  border-color: #bdb5f2;
+  color: #4f4796;
+}
+
+.status-badge {
+  align-items: center;
+  border: 1px solid #d5ddd9;
+  border-radius: 999px;
+  color: #4f5f59;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  max-width: 100%;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.status-badge.observed_fact,
+.status-badge.policy_in_force,
+.status-badge.methodology_or_definition {
+  background: #eef8f1;
+  border-color: #9fd4aa;
+  color: #23662f;
+}
+
+.status-badge.model_estimate {
+  background: #fff6df;
+  border-color: #e1bf62;
+  color: #765918;
+}
+
+.status-badge.policy_target_or_proposal,
+.status-badge.forecast_or_expectation {
+  background: #f2f0ff;
+  border-color: #bab0ef;
+  color: #4d438f;
+}
+
+.status-badge.risk_warning_or_scenario,
+.status-badge.rumor_or_unverified {
+  background: #fff0ea;
+  border-color: #e5a48d;
+  color: #8a3f27;
+}
+
+.status-badge.analysis_or_news_claim,
+.status-badge.review_needed,
+.status-badge.unclassified {
+  background: #f3f2ef;
+  border-color: #d5d0c6;
+  color: #625b4e;
+}
+
+.status-badge.prob-certain {
+  background: #eaf7ef;
+  border-color: #89c99c;
+  color: #1d6a35;
+}
+
+.status-badge.prob-high {
+  background: #edf7f5;
+  border-color: #8dcac1;
+  color: #176d62;
+}
+
+.status-badge.prob-medium {
+  background: #fff6df;
+  border-color: #e1bf62;
+  color: #765918;
+}
+
+.status-badge.prob-low {
+  background: #fff0ea;
+  border-color: #e5a48d;
+  color: #8a3f27;
+}
+
+.status-badge.prob-very-low,
+.status-badge.prob-unknown {
+  background: #f3f2ef;
+  border-color: #d5d0c6;
+  color: #625b4e;
 }

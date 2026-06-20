@@ -1,29 +1,18 @@
 [
   {
-    "id": "ev_int_1a4cc7b4",
-    "source_conf": 0.85,
-    "cala_fact_id": "0377f9f3-7ae0-4cff-98ad-e63afe64642f",
-    "source_name": "IMF Executive Board concludes 2025 Article IV Consultation with the Netherlands – INSIGHT EU MONITORING",
-    "source_url": "https://ieu-monitoring.com/editorial/imf-executive-board-concludes-2025-article-iv-consultation-with-the-netherlands/838740",
-    "claim_kind": "non_causal",
-    "inferences": [
-      {
-        "label": "forces_a_mechanism",
-        "target": "shortage_dominates",
-        "s": 0.148,
-        "text": "In its July 2025 Article IV Consultation, the IMF emphasized the need for structural reforms, including fostering investment to increase housing supply and implementing growth‑enhancing tax reforms, t",
-        "necessity": false,
-        "uncontrolled": false
-      }
-    ]
-  },
-  {
     "id": "ev_gri_a269f372",
     "source_conf": 0.85,
     "cala_fact_id": "0b2b6f8d-68a0-4f13-808b-de66fe47a848",
     "source_name": "Major cities fear stagnation in housing construction due to grid congestion",
     "source_url": "https://openrijk.nl/en/gemeenten/gemeente-utrecht/artikel/grote-steden-vrezen-voor-stilstand-woningbouw-door-netcongestie/major-cities-fear-stagnation-in-housing-construction-due-to-grid-congestion",
     "claim_kind": "causal_token",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 55,
+    "probability_label": "55%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -42,6 +31,13 @@
     "source_name": "Rotterdam Introduces Waiting List for New Electricity Connections Amid Grid Congestion",
     "source_url": "https://openrijk.nl/en/municipalities/municipality-of-rotterdam/article/rotterdam-introduces-waiting-list-for-new-electricity-connections-amid-grid-congestion",
     "claim_kind": "non_causal",
+    "evidence_status": "observed_fact",
+    "evidence_status_label": "Observed fact",
+    "is_already_real": true,
+    "evidence_status_rationale": "Text is a dated numeric observation or table row without expectation language.",
+    "probability_pct": 100,
+    "probability_label": "100%",
+    "probability_rationale": "Recorded measurement/event, so the UI treats it as already happened.",
     "inferences": [
       {
         "label": "reveals_a_preference",
@@ -60,6 +56,13 @@
     "source_name": "Rent, House Prices, and Demographics - Treasury Department",
     "source_url": "https://home.treasury.gov/news/featured-stories/rent-house-prices-and-demographics",
     "claim_kind": "causal_token",
+    "evidence_status": "analysis_or_news_claim",
+    "evidence_status_label": "Analysis or news claim",
+    "is_already_real": false,
+    "evidence_status_rationale": "No stronger fact/policy/forecast signal matched; conservatively treated as a source claim.",
+    "probability_pct": 60,
+    "probability_label": "60%",
+    "probability_rationale": "Plausible source/analyst claim, but not directly observed as an outcome.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -78,6 +81,13 @@
     "source_name": "Major cities fear stagnation in housing construction due to grid congestion",
     "source_url": "https://openrijk.nl/en/gemeenten/gemeente-utrecht/artikel/grote-steden-vrezen-voor-stilstand-woningbouw-door-netcongestie/major-cities-fear-stagnation-in-housing-construction-due-to-grid-congestion",
     "claim_kind": "causal_type",
+    "evidence_status": "risk_warning_or_scenario",
+    "evidence_status_label": "Risk warning or scenario",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text describes a risk, warning, or conditional scenario.",
+    "probability_pct": 35,
+    "probability_label": "35%",
+    "probability_rationale": "Risk or scenario language: possible adverse path, not baseline fact.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -90,12 +100,44 @@
     ]
   },
   {
+    "id": "ev_rul_d4375608",
+    "source_conf": 0.85,
+    "cala_fact_id": "f930e7cd-6846-4c31-a96b-1cc7f08aff05",
+    "source_name": "Rent, House Prices, and Demographics - Treasury Department",
+    "source_url": "https://home.treasury.gov/news/featured-stories/rent-house-prices-and-demographics",
+    "claim_kind": "causal_type",
+    "evidence_status": "analysis_or_news_claim",
+    "evidence_status_label": "Analysis or news claim",
+    "is_already_real": false,
+    "evidence_status_rationale": "No stronger fact/policy/forecast signal matched; conservatively treated as a source claim.",
+    "probability_pct": 60,
+    "probability_label": "60%",
+    "probability_rationale": "Plausible source/analyst claim, but not directly observed as an outcome.",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "shortage_dominates",
+        "s": 0.148,
+        "text": "When demand driven by demographics, migration, and headship outpaces housing supply, prices rise; U.S. data show demand growth exceeding supply over two decades, largely due to demographic change.",
+        "necessity": false,
+        "uncontrolled": false
+      }
+    ]
+  },
+  {
     "id": "ev_mon_8ab6486f",
     "source_conf": 0.85,
     "cala_fact_id": "2f28d2a7-a5ed-4768-8c2c-2f9d2ff41d32",
     "source_name": "The Dutch housing market shows resilience | ABN AMRO",
     "source_url": "https://www.abnamro.com/en/news/the-dutch-housing-market-shows-resilience-in-the-face-of-global-uncertainty",
     "claim_kind": "causal_token",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 55,
+    "probability_label": "55%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -114,6 +156,13 @@
     "source_name": "Monitor on mortgage lending standards and financial stability 2026",
     "source_url": "https://www.dnb.nl/media/cvfhqws0/86281_2600115_dnb_brochure-fs-monitor_engels_web.pdf",
     "claim_kind": "non_causal",
+    "evidence_status": "observed_fact",
+    "evidence_status_label": "Observed fact",
+    "is_already_real": true,
+    "evidence_status_rationale": "Text is a dated numeric observation or table row without expectation language.",
+    "probability_pct": 100,
+    "probability_label": "100%",
+    "probability_rationale": "Recorded measurement/event, so the UI treats it as already happened.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -132,6 +181,13 @@
     "source_name": "[PDF] Mortgage interest tax deduction in the Netherlands - a welcome relief",
     "source_url": "https://www.bis.org/review/r190712c.pdf",
     "claim_kind": "causal_type",
+    "evidence_status": "analysis_or_news_claim",
+    "evidence_status_label": "Analysis or news claim",
+    "is_already_real": false,
+    "evidence_status_rationale": "No stronger fact/policy/forecast signal matched; conservatively treated as a source claim.",
+    "probability_pct": 60,
+    "probability_label": "60%",
+    "probability_rationale": "Plausible source/analyst claim, but not directly observed as an outcome.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -150,6 +206,13 @@
     "source_name": "Assessment of the Dutch notification in accordance with Article ...",
     "source_url": "https://www.esrb.europa.eu/pub/pdf/other/esrb.opinion241028_report~29d9b314d3.en.pdf",
     "claim_kind": "non_causal",
+    "evidence_status": "risk_warning_or_scenario",
+    "evidence_status_label": "Risk warning or scenario",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text describes a risk, warning, or conditional scenario.",
+    "probability_pct": 35,
+    "probability_label": "35%",
+    "probability_rationale": "Risk or scenario language: possible adverse path, not baseline fact.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -168,6 +231,13 @@
     "source_name": "[PDF] Financial Stability Review May 2014 - European Central Bank",
     "source_url": "https://www.ecb.europa.eu/press/financial-stability-publications/fsr/shared/pdf/sfafinancialstabilityreview201405en.pdf",
     "claim_kind": "non_causal",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 55,
+    "probability_label": "55%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized. Adjustments: +5 official/statistical source, -5 conditional language.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -186,6 +256,13 @@
     "source_name": "Housing Market Quarterly: House prices will rise slightly this year - Rabobank",
     "source_url": "https://www.rabobank.com/knowledge/d011517250-housing-market-quarterly-house-prices-will-rise-slightly-this-year",
     "claim_kind": "non_causal",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 55,
+    "probability_label": "55%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized.",
     "inferences": [
       {
         "label": "breaks_a_story",
@@ -198,30 +275,19 @@
     ]
   },
   {
-    "id": "ev_ene_f33729b8",
-    "source_conf": 0.85,
-    "cala_fact_id": "fea5f153-9b3e-4222-ae87-c1e1e99b7a79",
-    "source_name": "Government Subsidies & Insights For Energy Labels in the Netherlands",
-    "source_url": "https://www.starterwoning.com/en/post/government-subsidies-insights-for-energy-labels-in-nl",
-    "claim_kind": "non_causal",
-    "inferences": [
-      {
-        "label": "breaks_a_story",
-        "target": "investor_window",
-        "s": 0.148,
-        "text": "Energy labels are mandatory for all houses and apartments when built, sold, or rented, and the label remains valid for ten years, ensuring that the label information is always available to buyers and ",
-        "necessity": false,
-        "uncontrolled": false
-      }
-    ]
-  },
-  {
     "id": "ev_int_e0d77010",
     "source_conf": 0.6,
     "cala_fact_id": "a4d0d0f2-b679-4821-aba0-b7ba86e85a18",
     "source_name": "Europe rent surge: Which countries saw the biggest increases in 2025?",
     "source_url": "https://finance.yahoo.com/economy/articles/europe-rent-surge-countries-saw-050120401.html",
     "claim_kind": "non_causal",
+    "evidence_status": "observed_fact",
+    "evidence_status_label": "Observed fact",
+    "is_already_real": true,
+    "evidence_status_rationale": "Text is a dated numeric observation or table row without expectation language.",
+    "probability_pct": 100,
+    "probability_label": "100%",
+    "probability_rationale": "Recorded measurement/event, so the UI treats it as already happened.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -240,6 +306,13 @@
     "source_name": "Waarom de Wet betaalbare huur een foute wet is - EW",
     "source_url": "https://www.ewmagazine.nl/politiek/news/2025/08/wet-betaalbare-huur-een-foute-wet-1496451",
     "claim_kind": "causal_token",
+    "evidence_status": "observed_fact",
+    "evidence_status_label": "Observed fact",
+    "is_already_real": true,
+    "evidence_status_rationale": "Text is a dated numeric observation or table row without expectation language.",
+    "probability_pct": 100,
+    "probability_label": "100%",
+    "probability_rationale": "Recorded measurement/event, so the UI treats it as already happened.",
     "inferences": [
       {
         "label": "breaks_a_story",
@@ -258,6 +331,13 @@
     "source_name": "Housing shortage in Netherlands to reach 453,000 by 2027, experts warn | NL Times",
     "source_url": "https://nltimes.nl/2025/04/22/housing-shortage-netherlands-reach-453000-2027-experts-warn",
     "claim_kind": "non_causal",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 55,
+    "probability_label": "55%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -270,12 +350,44 @@
     ]
   },
   {
+    "id": "ev_mar_593d90db",
+    "source_conf": 0.6,
+    "cala_fact_id": "a24fa42a-1747-47d8-ac8f-4a93aae5eed9",
+    "source_name": "Quarterly report housing market | SlimBieden",
+    "source_url": "https://www.slimbieden.nl/en/kwaraalrapport-rabobank-huizenmarkt",
+    "claim_kind": "non_causal",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 55,
+    "probability_label": "55%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized.",
+    "inferences": [
+      {
+        "label": "forces_a_mechanism",
+        "target": "investor_window",
+        "s": 0.41,
+        "text": "Rabobank’s forecast of approximately 238 000 home sales in 2025 (and a slight decline to about 233 000 in 2026) is drawn from its quarterly report, which attributes the higher volume to a “sell‑off wa",
+        "necessity": false,
+        "uncontrolled": true
+      }
+    ]
+  },
+  {
     "id": "ev_int_55a7f1f5",
     "source_conf": 0.6,
     "cala_fact_id": "1029ae8a-61a3-4e60-94d9-9297422a1036",
     "source_name": "House prices across Europe: Which countries saw the highest rises ...",
     "source_url": "https://finance.yahoo.com/news/house-prices-across-europe-countries-050131952.html",
     "claim_kind": "non_causal",
+    "evidence_status": "observed_fact",
+    "evidence_status_label": "Observed fact",
+    "is_already_real": true,
+    "evidence_status_rationale": "Text is a dated numeric observation or table row without expectation language.",
+    "probability_pct": 100,
+    "probability_label": "100%",
+    "probability_rationale": "Recorded measurement/event, so the UI treats it as already happened.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -294,6 +406,13 @@
     "source_name": "Regional house price differences are widening - Rabobank",
     "source_url": "https://www.rabobank.com/knowledge/d011325612-regional-house-price-differences-are-widening",
     "claim_kind": "non_causal",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 55,
+    "probability_label": "55%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -312,6 +431,13 @@
     "source_name": "Dutch Transfer Tax Exemption for First-Time Buyers Increases to €555,000 in 2026 | Your Dutch Home",
     "source_url": "https://yourdutchhome.com/40-af6a-18/news/dutch-transfer-tax-exemption-for-first-time-buyers-increases-to-555000-in-2026",
     "claim_kind": "non_causal",
+    "evidence_status": "policy_in_force",
+    "evidence_status_label": "Policy in force",
+    "is_already_real": true,
+    "evidence_status_rationale": "Text describes a policy/rule already in force or approved.",
+    "probability_pct": 100,
+    "probability_label": "100%",
+    "probability_rationale": "Policy/rule is already in force or approved.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -330,6 +456,13 @@
     "source_name": "Dutch Housing Prices Expected to Rise Over 11% in the Coming Year",
     "source_url": "https://huiskoopwijzer.nl/en/blog/dutch-housing-prices-forecast-september-2025",
     "claim_kind": "non_causal",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 60,
+    "probability_label": "60%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized. Adjustments: +5 official/statistical source.",
     "inferences": [
       {
         "label": "forces_a_mechanism",
@@ -348,6 +481,13 @@
     "source_name": "More expats are buying homes in the Netherlands – Holland Times",
     "source_url": "https://www.hollandtimes.nl/2025-edition-7-october-2025/more-expats-are-buying-homes-in-the-netherlands",
     "claim_kind": "non_causal",
+    "evidence_status": "observed_fact",
+    "evidence_status_label": "Observed fact",
+    "is_already_real": true,
+    "evidence_status_rationale": "Text is a dated numeric observation or table row without expectation language.",
+    "probability_pct": 100,
+    "probability_label": "100%",
+    "probability_rationale": "Recorded measurement/event, so the UI treats it as already happened.",
     "inferences": [
       {
         "label": "reveals_a_preference",
@@ -366,6 +506,13 @@
     "source_name": "Dutch Housing Prices Expected to Rise Over 11% in the Coming Year",
     "source_url": "https://huiskoopwijzer.nl/en/blog/dutch-housing-prices-forecast-september-2025",
     "claim_kind": "non_causal",
+    "evidence_status": "forecast_or_expectation",
+    "evidence_status_label": "Forecast or expectation",
+    "is_already_real": false,
+    "evidence_status_rationale": "Text is framed as forecast, expectation, or future conditional outcome.",
+    "probability_pct": 50,
+    "probability_label": "50%",
+    "probability_rationale": "Forecast/expectation: meaningful signal, not yet realized. Adjustments: -5 news/opinion framing.",
     "inferences": [
       {
         "label": "breaks_a_story",

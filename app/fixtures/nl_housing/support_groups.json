@@ -3,11 +3,11 @@
     "target": "shortage_dominates",
     "topology": "Convergence",
     "members": [
-      "ev_int_1a4cc7b4",
       "ev_gri_a269f372",
       "ev_gri_aedd77c9",
       "ev_rul_f9a5fa19",
-      "ev_gri_b843fc5c"
+      "ev_gri_b843fc5c",
+      "ev_rul_d4375608"
     ],
     "independence_factor": 0.85,
     "chain_order": []
@@ -30,10 +30,10 @@
     "topology": "Convergence",
     "members": [
       "ev_mar_6df79eaf",
-      "ev_ene_f33729b8",
       "ev_int_e0d77010",
       "ev_pol_93e86346",
-      "ev_soc_bd1229dc"
+      "ev_soc_bd1229dc",
+      "ev_mar_593d90db"
     ],
     "independence_factor": 0.85,
     "chain_order": []

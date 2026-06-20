@@ -8,7 +8,8 @@ import {
   type FactorResearch,
   type FactorSource,
   type PersonalProfile,
-  type PersonalVariables
+  type PersonalVariables,
+  type TaggedEvidenceText
 } from "./api";
 
 type View = "brief" | "market" | "evidence" | "personal" | "action" | "audit";
@@ -74,6 +75,87 @@ function normalizeProfileVariables(vars: PersonalVariables): PersonalVariables {
 function factorCoverageWidth(factor: FactorNode) {
   const derived = factor.source_count * 5 + factor.metric_count;
   return `${Math.max(6, Math.min(100, derived))}%`;
+}
+
+function factorProvenanceLabel(factor: FactorNode) {
+  const origins = factor.provenance?.derived_from_source_origins;
+  return origins?.length ? `derived from ${origins.join(" + ")}` : "source derived";
+}
+
+function sourceOriginLabel(source: FactorSource) {
+  if (source.source_origin === "cala") return "Cala";
+  if (source.source_origin === "web") return "Web";
+  return source.source_origin ?? "Source";
+}
+
+function sourceOriginClass(source: FactorSource) {
+  if (source.source_origin === "cala") return "cala";
+  if (source.source_origin === "web") return "web";
+  return "other";
+}
+
+function evidenceStatusLabel(status?: string | null) {
+  const labels: Record<string, string> = {
+    observed_fact: "Fact",
+    policy_in_force: "Policy live",
+    methodology_or_definition: "Method",
+    model_estimate: "Estimate",
+    policy_target_or_proposal: "Policy target",
+    forecast_or_expectation: "Forecast",
+    risk_warning_or_scenario: "Risk",
+    analysis_or_news_claim: "Analysis",
+    rumor_or_unverified: "Rumor",
+    review_needed: "Review"
+  };
+  return status ? labels[status] ?? status.replace(/_/g, " ") : "Unclassified";
+}
+
+function evidenceStatusClass(status?: string | null) {
+  return status ?? "unclassified";
+}
+
+function evidenceStatusProbability(status?: string | null) {
+  const scores: Record<string, number> = {
+    observed_fact: 100,
+    policy_in_force: 100,
+    methodology_or_definition: 100,
+    model_estimate: 80,
+    analysis_or_news_claim: 60,
+    forecast_or_expectation: 55,
+    policy_target_or_proposal: 50,
+    risk_warning_or_scenario: 35,
+    rumor_or_unverified: 15,
+    review_needed: 50
+  };
+  return status ? scores[status] ?? 50 : undefined;
+}
+
+function probabilityClass(probabilityPct?: number | null) {
+  if (probabilityPct === 100) return "prob-certain";
+  if (typeof probabilityPct !== "number") return "prob-unknown";
+  if (probabilityPct >= 75) return "prob-high";
+  if (probabilityPct >= 50) return "prob-medium";
+  if (probabilityPct >= 25) return "prob-low";
+  return "prob-very-low";
+}
+
+function EvidenceStatusBadge({
+  status,
+  probabilityPct,
+  title
+}: {
+  status?: string | null;
+  probabilityPct?: number | null;
+  title?: string | null;
+}) {
+  const pct = probabilityPct ?? evidenceStatusProbability(status);
+  const label = typeof pct === "number" ? `${pct}%` : "--";
+  const tooltip = title ?? `${evidenceStatusLabel(status)} · ${status ?? "unclassified"}`;
+  return (
+    <span className={`status-badge ${evidenceStatusClass(status)} ${probabilityClass(pct)}`} title={tooltip}>
+      {label}
+    </span>
+  );
 }
 
 function App() {
@@ -259,7 +341,7 @@ function App() {
         {error && (
           <div className="error">
             Trace API is unavailable at {engineBaseUrl}: {error}. Start the local API to populate
-            engine values and Cala-backed factor research.
+            engine values and mixed-source factor research.
           </div>
         )}
 
@@ -504,7 +586,7 @@ function MarketMap({
       <div className="section-heading">
         <div>
           <span className="eyebrow">Market Map</span>
-          <h2>Cala-backed factors pulling the decision in different directions</h2>
+          <h2>Mixed-source factors pulling the decision in different directions</h2>
         </div>
         <StatusPill label={factorResearch?.coverage_status ?? "loading research"} tone="watch" />
       </div>
@@ -551,13 +633,29 @@ function EvidenceBoard({
   onSelect: (selection: InspectorSelection) => void;
 }) {
   const rows = (factorResearch?.factors ?? [])
-    .flatMap((factor) =>
-      factor.top_metrics.slice(0, 3).map((metric) => ({
+    .flatMap((factor) => {
+      const metrics: Array<
+        Pick<TaggedEvidenceText, "text" | "status" | "label" | "probability_pct" | "probability_rationale">
+      > =
+        factor.tagged_metrics?.length
+          ? factor.tagged_metrics.slice(0, 3)
+          : factor.top_metrics.slice(0, 3).map((text) => ({
+              text,
+              status: factor.dominant_evidence_status ?? "analysis_or_news_claim",
+              label: evidenceStatusLabel(factor.dominant_evidence_status ?? "analysis_or_news_claim"),
+              probability_pct: factor.average_probability_pct ?? evidenceStatusProbability(factor.dominant_evidence_status) ?? 50,
+              probability_rationale: "Fallback factor probability from the factor rollup."
+            }));
+      return metrics.map((metric) => ({
         factor,
-        metric,
+        metric: metric.text,
+        evidenceStatus: metric.status,
+        evidenceLabel: metric.label,
+        probabilityPct: metric.probability_pct,
+        probabilityRationale: metric.probability_rationale,
         source: factor.sources[0]
-      }))
-    )
+      }));
+    })
     .slice(0, 22);
 
   return (
@@ -579,6 +677,7 @@ function EvidenceBoard({
           <span>Factor</span>
           <span>Current data line</span>
           <span>Level</span>
+          <span>Status</span>
           <span>Primary source</span>
           <span>Links</span>
         </div>
@@ -590,7 +689,7 @@ function EvidenceBoard({
               onSelect({
                 kind: "evidence",
                 title: row.factor.label,
-                meta: `L${row.factor.level} · ${row.factor.provenance?.source_origin ?? "source"} · ${row.factor.query_id}`,
+                meta: `L${row.factor.level} · ${factorProvenanceLabel(row.factor)} · ${row.factor.query_id ?? "web/tool"}`,
                 body: row.metric,
                 sources: row.factor.sources
               })
@@ -599,12 +698,19 @@ function EvidenceBoard({
             <span>{row.factor.label}</span>
             <strong>{row.metric}</strong>
             <span>L{row.factor.level}</span>
+            <span>
+              <EvidenceStatusBadge
+                status={row.evidenceStatus}
+                probabilityPct={row.probabilityPct}
+                title={`${row.evidenceLabel}: ${row.probabilityRationale}`}
+              />
+            </span>
             <span>{row.source?.domain ?? row.source?.label ?? "Inspect raw"}</span>
             <span>{row.factor.source_count}</span>
           </button>
         ))}
       </div>
-      {!rows.length && <p>Start the local API to load Cala-backed metric lines.</p>}
+      {!rows.length && <p>Start the local API to load mixed-source metric lines.</p>}
     </div>
   );
 }
@@ -831,6 +937,18 @@ function Inspector({
           <ul className="source-list">
             {selection.sources.slice(0, 5).map((source) => (
               <li key={`${source.context_id ?? source.url ?? source.label}`}>
+                <span className={`source-badge ${sourceOriginClass(source)}`}>
+                  {sourceOriginLabel(source)}
+                </span>
+                <EvidenceStatusBadge
+                  status={source.evidence_note_status?.status ?? source.dominant_evidence_status}
+                  probabilityPct={source.evidence_note_status?.probability_pct ?? source.average_probability_pct}
+                  title={
+                    source.evidence_note_status
+                      ? `${source.evidence_note_status.label}: ${source.evidence_note_status.probability_rationale}`
+                      : evidenceStatusLabel(source.dominant_evidence_status)
+                  }
+                />
                 {source.url ? (
                   <a href={source.url} target="_blank" rel="noreferrer">
                     {source.domain ?? source.label}

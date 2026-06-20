@@ -14,9 +14,15 @@ The fixtures are self-contained static JSON; the app reads them at runtime via
 engine/fixtures_loader.py. Re-run to refresh after the canonical data changes.
 """
 from __future__ import annotations
-import json, os
+import json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from scripts.build_nl_housing_app_research_fixture import classify_evidence_text
+
 CANON = r"C:\Users\eau12\Trace_Core\data\canonical"
 OUT = os.path.join(HERE, "fixtures", "nl_housing")
 os.makedirs(OUT, exist_ok=True)
@@ -99,6 +105,7 @@ def build():
         for c in picked:
             sp = c.get("source_provenance", {})
             eid = "ev_" + (c.get("stage1_evidence_id") or c["claim_id"]).replace("ev_", "")
+            evidence_status = classify_evidence_text(c.get("canonical_text", ""), sp.get("source_name", ""))
             evidence.append({
                 "id": eid,
                 "source_conf": 0.85 if c.get("evidence", {}).get("primary_or_secondary") == "primary" else 0.6,
@@ -106,6 +113,13 @@ def build():
                 "source_name": sp.get("source_name", ""),
                 "source_url": sp.get("source_url", ""),
                 "claim_kind": c.get("claim_kind"),
+                "evidence_status": evidence_status["status"],
+                "evidence_status_label": evidence_status["label"],
+                "is_already_real": evidence_status["is_already_real"],
+                "evidence_status_rationale": evidence_status["rationale"],
+                "probability_pct": evidence_status["probability_pct"],
+                "probability_label": evidence_status["probability_label"],
+                "probability_rationale": evidence_status["probability_rationale"],
                 "inferences": [inference_for(c, cid)],
             })
             members.append(eid)

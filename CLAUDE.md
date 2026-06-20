@@ -5,6 +5,13 @@ This Obsidian vault is the **shared brain** for our hackathon project. Two human
 same files. Markdown-in-git is the source of truth — not your context window, not
 anyone's local qmd index. This file is loaded automatically every session.
 
+## Language
+
+**用中文回复 mian。** Respond to the user in Chinese (Mandarin) by default. Keep code,
+file contents, commit messages, identifiers, and `brain/` log entries in English (the
+vault and codebase are English) — but all conversational replies, explanations, and
+questions to the user should be in Chinese unless they switch to English.
+
 ## The loop you run every session
 
 **Start**

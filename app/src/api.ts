@@ -1,4 +1,15 @@
 const API_BASE_URL = import.meta.env.VITE_TRACE_API_URL ?? "http://127.0.0.1:8000";
+const API_TIMEOUT_MS = 7000;
+
+async function fetchWithTimeout(input: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
 
 type PersonalAdviceResponse = {
   advice: TraceDemoOutput;
@@ -16,10 +27,55 @@ export type PersonalProfile = {
 };
 
 export type FactorSource = {
+  id?: string | null;
   label: string;
   url?: string | null;
   domain?: string | null;
   context_id?: string | null;
+  source_origin?: "cala" | "web" | string;
+  source_provider?: string | null;
+  ui_highlight_tags?: string[];
+  retrieved_at?: string | null;
+  published_at?: string | null;
+  language?: string | null;
+  evidence_note?: string | null;
+  evidence_note_status?: EvidenceStatus | null;
+  tagged_evidence_notes?: Array<TaggedEvidenceText>;
+  evidence_status_rollup?: Record<string, number>;
+  probability_bucket_counts?: Record<string, number>;
+  average_probability_pct?: number | null;
+  dominant_evidence_status?: string;
+};
+
+export type EvidenceStatus = {
+  status: string;
+  label: string;
+  is_already_real: boolean;
+  rationale: string;
+  probability_pct: number;
+  probability_label: string;
+  probability_rationale: string;
+};
+
+export type TaggedEvidenceText = EvidenceStatus & {
+  text: string;
+};
+
+export type FactorPolicyChange = {
+  date?: string | null;
+  title: string;
+  expected_effect?: string;
+  source_ids?: string[];
+  evidence_status?: EvidenceStatus;
+};
+
+export type FactorBottleneckOutlook = {
+  period?: string;
+  expected_change: string;
+  confidence?: string;
+  rationale?: string;
+  source_ids?: string[];
+  evidence_status?: EvidenceStatus;
 };
 
 export type FactorNode = {
@@ -29,15 +85,27 @@ export type FactorNode = {
   parent?: string | null;
   query_id?: string | null;
   summary: string;
+  mechanism?: string | null;
+  direction_on_prices?: string | null;
   metric_count: number;
   source_count: number;
   top_metrics: string[];
+  tagged_metrics?: TaggedEvidenceText[];
   sources: FactorSource[];
   raw_file?: string | null;
+  policy_changes?: FactorPolicyChange[];
+  bottleneck_outlook?: FactorBottleneckOutlook[];
+  evidence_status_rollup?: Record<string, number>;
+  probability_bucket_counts?: Record<string, number>;
+  average_probability_pct?: number | null;
+  dominant_evidence_status?: string;
   provenance?: {
-    source_origin?: string;
-    raw_response?: string;
+    derived_from_source_origins?: string[];
+    ui_highlight_tags?: string[];
+    raw_response?: string | null;
     status?: string;
+    note?: string;
+    generated_at?: string;
   };
 };
 
@@ -53,15 +121,29 @@ export type FactorResearch = {
     raw_response_count?: number;
     metric_line_count?: number;
     source_link_count?: number;
+    direct_cala_source_link_count?: number;
+    web_source_link_count?: number;
+    web_registry_source_count?: number;
+    web_nl_registry_source_count?: number;
+    evidence_status_counts?: Record<string, number>;
+    probability_bucket_counts?: Record<string, number>;
+    average_probability_pct?: number | null;
+    metric_evidence_status_counts?: Record<string, number>;
+    source_evidence_status_counts?: Record<string, number>;
+    policy_evidence_status_counts?: Record<string, number>;
+    outlook_evidence_status_counts?: Record<string, number>;
   };
   edges: Array<{ source: string; target: string }>;
   factors: FactorNode[];
+  web_sources?: FactorSource[];
+  evidence_status_taxonomy?: Record<string, { label: string; is_already_real: boolean; description: string }>;
+  probability_scoring?: Record<string, { base_pct: number; label: string; description: string }>;
 };
 
 export async function runPersonalAdvice(
   personalVariables: PersonalVariables | null = null
 ): Promise<TraceDemoOutput> {
-  const response = await fetch(`${API_BASE_URL}/api/run-personal-advice`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/run-personal-advice`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -92,7 +174,7 @@ export type RunRequest = {
 };
 
 async function postRun(path: string, body: RunRequest = {}): Promise<EngineOutput> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ case: "nl_housing", ...body })
@@ -105,19 +187,19 @@ async function postRun(path: string, body: RunRequest = {}): Promise<EngineOutpu
 
 /** Health + which input source the engine is using (fixtures vs run_demo). */
 export async function health(): Promise<EngineOutput> {
-  const response = await fetch(`${API_BASE_URL}/api/health`);
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/health`);
   if (!response.ok) throw new Error(`Trace API health returned ${response.status}`);
   return (await response.json()) as EngineOutput;
 }
 
 export async function fetchFactorTree(): Promise<FactorResearch> {
-  const response = await fetch(`${API_BASE_URL}/api/factor-tree`);
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/factor-tree`);
   if (!response.ok) throw new Error(`Trace API factor-tree returned ${response.status}`);
   return (await response.json()) as FactorResearch;
 }
 
 export async function fetchPersonalProfiles(): Promise<PersonalProfile[]> {
-  const response = await fetch(`${API_BASE_URL}/api/personal-profiles`);
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/personal-profiles`);
   if (!response.ok) throw new Error(`Trace API personal-profiles returned ${response.status}`);
   const payload = (await response.json()) as { profiles: PersonalProfile[] };
   return payload.profiles;
