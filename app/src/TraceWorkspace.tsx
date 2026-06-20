@@ -217,13 +217,25 @@ const TOPIC_SUGGESTIONS: Array<{ topic: string; cat: string; people: number }> =
 
 // Contributors = people whose added public source SUSTAINED (un-challenged) into
 // the graph. Profile / DM links are fake doors for now. (Current topic's panel.)
-interface Contributor { name: string; init: string; color: string; verified: boolean; field: string; cred: number }
+interface Contributor { name: string; init: string; color: string; verified: boolean; field: string; cred: number; sources: number; graphs: number }
 const CONTRIBUTORS: Contributor[] = [
-  { name: "Dr. Marieke Visser", init: "MV", color: "#1C3A5E", verified: true, field: "Housing economics · DNB", cred: 0.94 },
-  { name: "Liang Wei", init: "LW", color: "#5A6E48", verified: true, field: "Demography & migration", cred: 0.89 },
-  { name: "Tomás Oliveira", init: "TO", color: "#7A6A54", verified: true, field: "Urban planning · TU Delft", cred: 0.83 },
-  { name: "Sanne de Boer", init: "SB", color: "#A03A2C", verified: false, field: "Independent mortgage analyst", cred: 0.71 },
+  { name: "Dr. Marieke Visser", init: "MV", color: "#1C3A5E", verified: true, field: "Housing economics · DNB", cred: 0.94, sources: 42, graphs: 11 },
+  { name: "Liang Wei", init: "LW", color: "#5A6E48", verified: true, field: "Demography & migration", cred: 0.89, sources: 28, graphs: 7 },
+  { name: "Tomás Oliveira", init: "TO", color: "#7A6A54", verified: true, field: "Urban planning · TU Delft", cred: 0.83, sources: 19, graphs: 5 },
+  { name: "Sanne de Boer", init: "SB", color: "#A03A2C", verified: false, field: "Independent mortgage analyst", cred: 0.71, sources: 12, graphs: 3 },
 ];
+// The collaborative graph's current shared read — a one-line conclusion + the
+// insights from the graph that sustain it. (Editorial; mirrors NET_READ.)
+const GRAPH_READ = {
+  dirChip: "↑ rising",
+  title: "House prices still rising — but growth is decelerating",
+  insights: [
+    "Structural shortage ~401k homes, still widening toward 2027",
+    "Mortgage rates near 3.6% keep borrowing capacity high",
+    "Price momentum +8.6% YoY, but cooling from the peak",
+    "Investor sell-off has opened a brief supply window",
+  ],
+};
 const fakeDoor = (what: string) => alert(`${what} — coming soon`);
 function Avatar({ init, color, size = 28 }: { init: string; color: string; size?: number }) {
   return <span style={{ width: size, height: size, borderRadius: "50%", background: color, color: K.paper, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontWeight: 600, fontSize: Math.round(size * 0.36), flexShrink: 0 }}>{init}</span>;
@@ -231,11 +243,49 @@ function Avatar({ init, color, size = 28 }: { init: string; color: string; size?
 function VerifiedMark() {
   return <span title="Verified contributor" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: "50%", background: K.secondary, color: K.paper, fontSize: 8, lineHeight: 1, flexShrink: 0 }}>✓</span>;
 }
+// Fake contributor profile page — the DM / Follow buttons are fake doors.
+function ContributorProfile({ c, onClose }: { c: Contributor; onClose: () => void }) {
+  const stat = (label: string, val: string | number) => (
+    <span key={label} style={{ flex: 1, background: K.paperDeep, borderRadius: 4, padding: "7px 9px", textAlign: "center" }}>
+      <span style={{ display: "block", fontFamily: serif, fontSize: 17, color: K.ink, lineHeight: 1 }}>{val}</span>
+      <span style={{ display: "block", fontFamily: mono, fontSize: 7.5, letterSpacing: 0.4, textTransform: "uppercase", color: K.meta, marginTop: 3 }}>{label}</span>
+    </span>
+  );
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,18,14,.32)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 352, maxWidth: "92vw", background: K.paper, border: `1px solid ${K.rule}`, borderRadius: 4, boxShadow: "0 14px 44px rgba(0,0,0,.24)", overflow: "hidden" }}>
+        <div style={{ height: 50, background: c.color, position: "relative" }}>
+          <button onClick={onClose} style={{ position: "absolute", top: 8, right: 9, border: "none", background: "rgba(255,255,255,.2)", color: K.paper, width: 22, height: 22, borderRadius: "50%", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ padding: "0 18px 16px" }}>
+          <span style={{ display: "inline-block", borderRadius: "50%", boxShadow: `0 0 0 3px ${K.paper}`, marginTop: -26 }}><Avatar init={c.init} color={c.color} size={52} /></span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}><b style={{ fontSize: 16 }}>{c.name}</b>{c.verified && <VerifiedMark />}</div>
+          <div style={{ fontFamily: mono, fontSize: 9, color: K.inkMute, marginTop: 2 }}>{c.field}</div>
+          <div style={{ margin: "12px 0 11px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: mono, fontSize: 8, letterSpacing: 0.4, textTransform: "uppercase", color: K.meta, marginBottom: 3 }}><span>Contribution credibility</span><span style={{ color: c.cred >= 0.85 ? K.good : K.meta }}>{Math.round(c.cred * 100)}%</span></div>
+            <div style={{ height: 5, background: K.paperDeep, border: `1px solid ${K.rule}`, borderRadius: 3, overflow: "hidden" }}><span style={{ display: "block", height: "100%", width: `${c.cred * 100}%`, background: c.cred >= 0.85 ? K.good : K.meta }} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 7, marginBottom: 13 }}>
+            {stat("sources sustained", c.sources)}
+            {stat("graphs", c.graphs)}
+            {stat("verified", c.verified ? "yes" : "—")}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => fakeDoor(`Message ${c.name}`)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: mono, fontSize: 11, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", border: "none", borderRadius: 3, padding: "9px", cursor: "pointer", color: K.paper, background: K.secondary }}>✉ Message</button>
+            <button onClick={() => fakeDoor(`Follow ${c.name}`)} style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", border: `1px solid ${K.rule}`, borderRadius: 3, padding: "9px 14px", cursor: "pointer", color: K.inkSoft, background: K.paper }}>＋ Follow</button>
+          </div>
+          <div style={{ fontFamily: mono, fontSize: 7.5, color: K.inkMute, textAlign: "center", marginTop: 9 }}>Profile & messaging are demo placeholders</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePanels, panelsOn }: { source: string; onRun: () => void; running: boolean; dirty: boolean; onFullscreen: () => void; isFs: boolean; onTogglePanels: () => void; panelsOn: boolean }) {
   const live = source === "engine" ? "engine live" : source === "offline" ? "offline · fallback" : "loading…";
   const liveCol = source === "engine" ? K.good : source === "offline" ? K.warn : K.inkMute;
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [profile, setProfile] = useState<Contributor | null>(null);
   const topic = "What's moving the Dutch housing market?";
   // topic field has three variants: rest → hover (stretch + lift) → focused (active input + ring + dropdown)
   const expanded = hovered || editing;
@@ -273,28 +323,39 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
         </div>
         {editing && (
           <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: K.paper, border: `1px solid ${K.rule}`, borderRadius: 4, boxShadow: "0 14px 32px rgba(0,0,0,.18)", padding: "5px 0", zIndex: 50, maxHeight: 420, overflowY: "auto" }}>
-            {/* ── contributors of THIS graph (sustained, un-challenged public sources) ── */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 14px 6px" }}>
-              <span style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Contributors · this graph</span>
-              <span style={{ fontFamily: mono, fontSize: 7.5, color: K.inkMute }}>{CONTRIBUTORS.length} people</span>
+            {/* ── current shared understanding of THIS graph + who built it ── */}
+            <div style={{ padding: "6px 14px 9px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Current understanding · this graph</span>
+                {/* overlapping contributor avatars → fake profile pages (count after) */}
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ display: "flex" }}>
+                    {CONTRIBUTORS.map((c, i) => (
+                      <button key={c.name} title={`${c.name} · open profile`} onMouseDown={(e) => e.preventDefault()} onClick={() => setProfile(c)}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.zIndex = "2"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.zIndex = "1"; }}
+                        style={{ marginLeft: i ? -8 : 0, padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "50%", boxShadow: `0 0 0 1.5px ${K.paper}`, position: "relative", zIndex: 1, transition: "transform .12s" }}>
+                        <Avatar init={c.init} color={c.color} size={22} />
+                      </button>
+                    ))}
+                  </span>
+                  <span style={{ fontFamily: mono, fontSize: 7.5, color: K.inkMute }}>{CONTRIBUTORS.length} people</span>
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 7, alignItems: "flex-start", marginBottom: 7 }}>
+                <span style={{ marginTop: 2, fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: K.primary, border: `1px solid ${K.primary}`, borderRadius: 3, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>{GRAPH_READ.dirChip}</span>
+                <span style={{ fontFamily: editorial, fontStyle: "italic", fontSize: 15, color: K.ink, lineHeight: 1.25 }}>{GRAPH_READ.title}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {GRAPH_READ.insights.map((t) => (
+                  <span key={t} style={{ display: "flex", gap: 7, fontSize: 10.5, color: K.inkSoft, lineHeight: 1.35 }}>
+                    <span style={{ flexShrink: 0, marginTop: 5, width: 4, height: 4, borderRadius: 2, background: K.good }} />
+                    <span>{t}</span>
+                  </span>
+                ))}
+              </div>
             </div>
-            {CONTRIBUTORS.map((c) => (
-              <button key={c.name} onMouseDown={(e) => e.preventDefault()} onClick={() => fakeDoor(`${c.name}'s profile`)}
-                onMouseEnter={(e) => (e.currentTarget.style.background = K.paperDeep)} onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", border: "none", background: "none", cursor: "pointer", padding: "7px 14px", textAlign: "left", transition: "background .12s" }}>
-                <Avatar init={c.init} color={c.color} />
-                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><b style={{ fontSize: 12, whiteSpace: "nowrap" }}>{c.name}</b>{c.verified && <VerifiedMark />}</span>
-                  <span style={{ fontFamily: mono, fontSize: 8.5, color: K.inkMute, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.field}</span>
-                </span>
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-                  <span title="Contribution credibility" style={{ fontFamily: mono, fontSize: 8, color: c.cred >= 0.85 ? K.good : K.meta, border: `1px solid ${K.rule}`, borderRadius: 3, padding: "1px 5px" }}>{Math.round(c.cred * 100)}% cred</span>
-                  <span onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); fakeDoor(`Message ${c.name}`); }}
-                    style={{ fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: K.secondary, border: `1px solid ${K.secondary}`, borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>✉ DM</span>
-                </span>
-              </button>
-            ))}
-            <div style={{ height: 1, background: K.ruleSoft, margin: "5px 14px" }} />
+            <div style={{ height: 1, background: K.ruleSoft, margin: "0 14px 4px" }} />
             {/* ── other contested topics (with their contributor count) ── */}
             <div style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta, padding: "4px 14px 6px" }}>Other contested topics</div>
             {TOPIC_SUGGESTIONS.map((s) => (
@@ -333,6 +394,7 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
         </button>
       </div>
       <style>{`@keyframes tracePulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
+      {profile && <ContributorProfile c={profile} onClose={() => setProfile(null)} />}
     </div>
   );
 }
@@ -346,7 +408,7 @@ function NavRail({ onZoom, onFit, k }: { onZoom: (f: number) => void; onFit: () 
     <button key={title} onClick={fn} title={title} style={{ width: 26, height: 24, border: `1px solid ${K.rule}`, background: K.paper, color: K.inkSoft, borderRadius: 2, cursor: "pointer", fontFamily: mono, fontSize: 12 }}>{t}</button>;
   return (
     <div onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
-      style={{ position: "absolute", top: 12, right: 12, background: "rgba(250,248,243,.92)", border: `1px solid ${K.rule}`, borderRadius: 3, zIndex: 5, padding: open ? "8px 10px" : "5px 7px", transition: "padding .15s" }}>
+      style={{ position: "absolute", top: 12, left: 12, background: "rgba(250,248,243,.92)", border: `1px solid ${K.rule}`, borderRadius: 3, zIndex: 6, padding: open ? "8px 10px" : "5px 7px", transition: "padding .15s" }}>
       {!open ? (
         <div title="Navigate" style={{ fontFamily: mono, fontSize: 12, color: K.inkSoft, lineHeight: 1, cursor: "default" }}>⤢</div>
       ) : (
@@ -483,6 +545,7 @@ function NumberField({ d, value, onCommit }: { d: PersonalVarDef; value: number;
 function VariablePicker({ initial, vars, setVars, onClose, onConfirm }: { initial: VarKey[]; vars: Vars; setVars: React.Dispatch<React.SetStateAction<Vars>>; onClose: () => void; onConfirm: (keys: VarKey[]) => void }) {
   const start = initial.length ? initial : PERSONAL_VARS.filter((d) => d.recommended).map((d) => d.id);
   const [sel, setSel] = useState<VarKey[]>(start);
+  const [hov, setHov] = useState<VarKey | null>(null);  // faint hover wash (K.good, desaturated)
   const include = (k: VarKey) => setSel((s) => s.includes(k) ? s : [...s, k]);
   const toggle = (k: VarKey) => setSel((s) => s.includes(k) ? s.filter((x) => x !== k) : [...s, k]);
   const setVal = (k: VarKey, v: number | boolean) => { setVars((s) => ({ ...s, [k]: v } as Vars)); include(k); };
@@ -500,7 +563,8 @@ function VariablePicker({ initial, vars, setVars, onClose, onConfirm }: { initia
           {PERSONAL_VARS.map((d) => {
             const on = sel.includes(d.id);
             return (
-              <div key={d.id} style={{ padding: "11px 0", borderBottom: `1px solid ${K.ruleSoft}`, opacity: on ? 1 : 0.62, transition: "opacity .15s" }}>
+              <div key={d.id} onMouseEnter={() => setHov(d.id)} onMouseLeave={() => setHov(null)}
+                style={{ margin: "0 -16px", padding: "11px 16px", borderBottom: `1px solid ${K.ruleSoft}`, opacity: on ? 1 : 0.62, background: hov === d.id ? "rgba(90,110,72,0.07)" : "transparent", transition: "opacity .15s, background .12s" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                   <input type="checkbox" checked={on} onChange={() => toggle(d.id)} title={on ? "Unplug from graph" : "Plug into graph"} style={{ accentColor: K.good, width: 14, height: 14, flexShrink: 0 }} />
                   <UnitIcon unit={d.unit} id={d.id} color={K.secondary} />
