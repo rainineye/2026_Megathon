@@ -34,6 +34,7 @@ export default function TraceWorkspace() {
   const [rightOn, setRightOn] = useState(true);   // floating right panel (info display)
   const [dockOn, setDockOn] = useState(true);     // floating bottom dock (indicators)
   const [isFs, setIsFs] = useState(false);
+  const [divHover, setDivHover] = useState(false);   // center focus-anchor visibility
   const [hover, setHover] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [cam, setCam] = useState({ x: 0, y: 0, k: 1 });
@@ -67,7 +68,7 @@ export default function TraceWorkspace() {
       const nx = splitDrag.current.cx + ((e.clientX - splitDrag.current.sx) / w) * VBW;
       setCam((c) => ({ ...c, x: nx }));
     };
-    const up = () => { splitDrag.current = null; };
+    const up = () => { splitDrag.current = null; setDivHover(false); };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
     return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
   }, []);
@@ -93,6 +94,29 @@ export default function TraceWorkspace() {
   const displayFactors = engineDist ? factors : factors.map((f) => ({ ...f, weightReady: false }));
   const personal = personalLayer(activeVars, vars);
   const advice = personalAdvice(applied, appliedActive, dist.w);
+
+  // ── inject the protocol READ as on-canvas conclusion cards (option 1): the
+  //    scenario distribution from `dist`, drawn in the same card language and wired
+  //    from the outcome node. Grounded in the engine output — nothing fabricated.
+  const scenCat: Record<string, Category> = { shortage_dominates: "supply", financing_pressure: "financing", investor_window: "policy", regional_divergence: "regional", user_constraint: "personal" };
+  const outcomeF = factors.find((f) => f.role === "outcome" || f.category === "outcome");
+  const ranked = SCENARIOS.map(([id, label]) => ({ id, label, w: dist.w[id] ?? 0 })).sort((a, b) => b.w - a.w);
+  const conclNodes: CanvasFactor[] = ranked.map((s, i) => ({
+    id: `read_${s.id}`, label: s.label, category: scenCat[s.id] ?? "outcome", role: "outcome",
+    value: s.label, trend: "→", evidenceCount: factors.filter((f) => (f.support?.[s.id] ?? 0) > 0).length,
+    credibility: "primary", contested: false, weightReady: true, mechanism: SCEN_META[s.id]?.note,
+    support: { [s.id]: 1 }, x: 2300, y: 300 + i * 104,
+  }));
+  const conclEdges: CanvasEdge[] = ranked.flatMap((s) => {
+    const es: CanvasEdge[] = [];
+    if (outcomeF) es.push({ from: outcomeF.id, to: `read_${s.id}`, strength: 0.35 + s.w * 0.55, sign: 1, relation: "causal" });
+    const top = factors.filter((f) => (f.support?.[s.id] ?? 0) > 0).sort((a, b) => (b.support[s.id] ?? 0) - (a.support[s.id] ?? 0))[0];
+    if (top) es.push({ from: top.id, to: `read_${s.id}`, strength: 0.3 + (top.support[s.id] ?? 0) * 0.5, sign: 1, relation: "causal" });
+    return es;
+  });
+  const allFactors = [...displayFactors, ...conclNodes];
+  const allEdges = [...edges, ...conclEdges];
+  const allWeights = { ...weights, ...Object.fromEntries(ranked.map((s) => [`read_${s.id}`, s.w])) };
   const panelsOn = rightOn || dockOn;
   const togglePanels = () => { const v = !(rightOn || dockOn); setRightOn(v); setDockOn(v); };
   const selFactor = sel ? factors.find((f) => f.id === sel) || null : null;
@@ -151,42 +175,55 @@ export default function TraceWorkspace() {
         onFullscreen={toggleFullscreen} isFs={isFs} onTogglePanels={togglePanels} panelsOn={panelsOn} />
       <div ref={bodyRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {/* ---- canvas — FULL viewport width; an internal divider splits graph | outcome ---- */}
-        <div ref={canvasRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: K.paper }}>
-          <CanvasGraph factors={displayFactors} edges={edges} weights={weights} personal={personal} sel={sel} hover={hover}
+        <div ref={canvasRef}
+          onMouseMove={(e) => { if (splitDrag.current) return; const r = bodyRef.current?.getBoundingClientRect(); if (r) setDivHover(Math.abs(e.clientX - (r.left + r.width / 2)) < 70); }}
+          onMouseLeave={() => { if (!splitDrag.current) setDivHover(false); }}
+          style={{ position: "absolute", inset: 0, overflow: "hidden", background: K.paper }}>
+          <CanvasGraph factors={allFactors} edges={allEdges} weights={allWeights} personal={personal} sel={sel} hover={hover}
             cam={cam} setCam={setCam} onHover={setHover} onSelect={setSel} onMove={moveFactor} />
           <NavRail onZoom={zoom} onFit={fitView} k={cam.k} />
           <LegendBar />
         </div>
-        {/* focus divider — a locator; drag to PAN the one canvas: reveal more input (←) or outcome (→). Nothing reflows. */}
-        <div onPointerDown={(e) => { splitDrag.current = { sx: e.clientX, cx: cam.x }; }} title="Drag to reveal more input (←) or outcome (→)"
-          style={{ position: "absolute", top: 0, bottom: 0, right: "34%", width: 11, cursor: "col-resize", zIndex: 7, display: "flex", justifyContent: "center" }}
-          onMouseEnter={(e) => ((e.currentTarget.firstElementChild as HTMLElement).style.background = K.inkMute)}
-          onMouseLeave={(e) => ((e.currentTarget.firstElementChild as HTMLElement).style.background = K.rule)}>
-          <div style={{ width: 1, height: "100%", background: K.rule, transition: "background .15s" }} />
+        {/* center focus ANCHOR — appears when the cursor nears the middle; drag to push the whole
+            flowchart left (investigate causes) or right (reveal more outcome). Non-blocking. */}
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", transform: "translateX(-50%)", width: 60, zIndex: 7, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+          <div onPointerDown={(e) => { splitDrag.current = { sx: e.clientX, cx: cam.x }; setDivHover(true); }}
+            title="Drag to push the graph — left to reveal more outcome, right to investigate the causes"
+            style={{ position: "relative", width: 22, height: "100%", cursor: "ew-resize", display: "flex", justifyContent: "center", opacity: divHover ? 1 : 0, transition: "opacity .2s", pointerEvents: divHover ? "auto" : "none" }}>
+            <div style={{ width: 1, height: "100%", background: K.rule }} />
+            <div style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", width: 22, height: 42, borderRadius: 11, background: K.paper, border: `1px solid ${K.rule}`, boxShadow: "0 1px 6px rgba(0,0,0,.16)", display: "flex", alignItems: "center", justifyContent: "center", color: K.inkSoft, fontFamily: mono, fontSize: 12 }}>⇆</div>
+          </div>
         </div>
         {/* ---- Inputs & inspector — right panel over the canvas (same fill, no shadow), closable ---- */}
         {rightOn ? (
-          <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10, zIndex: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Inputs</span>
+          <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, padding: 12, display: "flex", flexDirection: "column", gap: 10, zIndex: 8 }}>
+            {/* close — pinned top-right */}
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexShrink: 0 }}>
               <button onClick={() => setRightOn(false)} title="Hide panel" style={{ border: "none", background: "none", color: K.inkMute, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 2 }}>✕</button>
             </div>
-            <AddVariablesCTA onPick={() => setPicker(true)} />
-            {activeVars.length > 0 && (
-              <YourVariables active={activeVars} vars={vars} setVars={setVars} onManage={() => setPicker(true)}
-                onRemove={(k) => setActiveVars((a) => a.filter((x) => x !== k))} dirty={dirty} running={running} onRun={runProtocol} />
-            )}
-            <FoldSection title={selPersonal ? `Inspector · ${selPersonal.label}` : selFactor ? `Inspector · ${selFactor.label}` : "Inspector"} defaultOpen>
-              {selPersonal ? <PersonalDetail d={selPersonal} vars={vars} active={activeVars.includes(selPersonal.id)} onAdd={() => setActiveVars((a) => a.includes(selPersonal.id) ? a : [...a, selPersonal.id])} />
-                : selFactor ? <NodeInvestigation f={selFactor} weight={weights[selFactor.id] ?? 0} />
-                : <Empty text="Click a factor (or one of your private variables) on the canvas to inspect it." />}
-            </FoldSection>
-            {!selPersonal && selFactor?.evidence && (
-              <FoldSection title="Evidence" defaultOpen>
-                <div style={{ fontSize: 12, lineHeight: 1.45 }}>{selFactor.evidence.claim}</div>
-                {selFactor.evidence.url && <a href={selFactor.evidence.url} target="_blank" rel="noopener" style={{ display: "inline-block", marginTop: 7, color: K.secondary, fontSize: 10, fontFamily: mono }}>{selFactor.evidence.source} ↗</a>}
+            {/* inspector — primary; scrolls within this bounded region */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+              <FoldSection title={selPersonal ? `Inspector · ${selPersonal.label}` : selFactor ? `Inspector · ${selFactor.label}` : "Inspector"} defaultOpen>
+                {selPersonal ? <PersonalDetail d={selPersonal} vars={vars} active={activeVars.includes(selPersonal.id)} onAdd={() => setActiveVars((a) => a.includes(selPersonal.id) ? a : [...a, selPersonal.id])} />
+                  : selFactor ? <NodeInvestigation f={selFactor} weight={weights[selFactor.id] ?? 0} />
+                  : <Empty text="Click a factor (or one of your private variables) on the canvas to inspect it." />}
               </FoldSection>
-            )}
+              {!selPersonal && selFactor?.evidence && (
+                <FoldSection title="Evidence" defaultOpen>
+                  <div style={{ fontSize: 12, lineHeight: 1.45 }}>{selFactor.evidence.claim}</div>
+                  {selFactor.evidence.url && <a href={selFactor.evidence.url} target="_blank" rel="noopener" style={{ display: "inline-block", marginTop: 7, color: K.secondary, fontSize: 10, fontFamily: mono }}>{selFactor.evidence.source} ↗</a>}
+                </FoldSection>
+              )}
+            </div>
+            {/* inputs — stuck to the bottom */}
+            <div style={{ flexShrink: 0, borderTop: `1px solid ${K.rule}`, paddingTop: 10, display: "flex", flexDirection: "column", gap: 10, maxHeight: "46%", overflowY: "auto" }}>
+              <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Inputs</span>
+              <AddVariablesCTA onPick={() => setPicker(true)} />
+              {activeVars.length > 0 && (
+                <YourVariables active={activeVars} vars={vars} setVars={setVars} onManage={() => setPicker(true)}
+                  onRemove={(k) => setActiveVars((a) => a.filter((x) => x !== k))} dirty={dirty} running={running} onRun={runProtocol} />
+              )}
+            </div>
           </div>
         ) : (
           <button onClick={() => setRightOn(true)} title="Show inputs & inspector"
@@ -289,7 +326,8 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
   const topic = "What's moving the Dutch housing market?";
   // topic field has three variants: rest → hover (stretch + lift) → focused (active input + ring + dropdown)
   const expanded = hovered || editing;
-  const fieldBg = editing ? K.paper : hovered ? K.paper : "#EFE9DB";
+  // theme-tone yellow at rest (K.warn lightened); hover lifts to a paler yellow; only typing clears to white paper
+  const fieldBg = editing ? K.paper : hovered ? "#F8F2DF" : "#F3EACF";
   const fieldBorder = editing ? K.secondary : hovered ? K.meta : K.rule;
   const fieldShadow = editing ? "0 0 0 3px rgba(28,58,94,.13)" : hovered ? "0 1px 8px rgba(0,0,0,.07)" : "none";
   const iconColor = editing ? K.secondary : hovered ? K.inkSoft : K.inkMute;

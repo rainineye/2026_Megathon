@@ -78,6 +78,30 @@ function edgeStyle(edge: CanvasEdge, from: CanvasFactor, focused: boolean, incid
       dash: "6 4"
     };
   }
+  if (relation === "confounder") {
+    return {
+      color: K.meta,
+      width: incident ? 2.0 : 1.4,
+      opacity: focused ? (incident ? 0.92 : 0.1) : 0.5,
+      dash: "2 4"
+    };
+  }
+  if (relation === "conditioning") {
+    return {
+      color: K.good,
+      width: incident ? 1.8 : 1.2,
+      opacity: focused ? (incident ? 0.9 : 0.1) : 0.4,
+      dash: "1 5"
+    };
+  }
+  if (relation === "feedback") {
+    return {
+      color: K.secondary,
+      width: incident ? 2.2 : 1.5,
+      opacity: focused ? (incident ? 0.92 : 0.1) : 0.45,
+      dash: "5 3"
+    };
+  }
   return {
     color: edge.sign < 0 ? K.secondarySoft : CAT_COLOR[from.category],
     width: incident ? 2.7 : 1.8,

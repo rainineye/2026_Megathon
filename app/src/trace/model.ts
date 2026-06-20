@@ -41,7 +41,8 @@ export interface CanvasFactor {
 }
 export interface CanvasEdge {
   from: string; to: string; strength: number; sign: 1 | -1 | 0;
-  relation?: "contains" | "causal" | "contested" | "conditioning";
+  relation?: "contains" | "causal" | "contested" | "conditioning" | "confounder" | "feedback";
+  mechanism?: string;
 }
 export interface Vars { price: number; deposit: number; ceil: number; rate: number; hor: number; flex: boolean; }
 export type VarKey = "price" | "deposit" | "ceil" | "rate" | "hor" | "flex";
@@ -401,8 +402,12 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
     };
   });
   const ids = new Set(factors.map((f) => f.id));
+  const signMap = (s?: string): 1 | -1 | 0 => (s === "+" ? 1 : s === "-" ? -1 : 0);
+  const strengthMap = (s?: string, contested?: boolean): number =>
+    s === "strong" ? 0.7 : s === "weak" ? 0.4 : contested ? 0.5 : 0.6;
+  // containment edges: child -> parent (drawn as the tree skeleton)
   const contains: CanvasEdge[] = (res.edges || [])
-    .filter((e) => ids.has(e.source) && ids.has(e.target))
+    .filter((e) => (e.relation ?? "contains") === "contains" && ids.has(e.source) && ids.has(e.target))
     .map((e) => ({ from: e.target, to: e.source, strength: 0.35, sign: 1 as const, relation: "contains" as const }));
   const addContains = (from: string, to: string) => {
     if (!ids.has(from) || !ids.has(to)) return;
@@ -420,22 +425,22 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
   addContains("development_viability_execution", "supply_bottleneck_breakdown");
   addContains("policy_tax_subdrivers", "investor_selloff_rental_policy");
   addContains("box3_private_rental_tax_channel", "investor_selloff_rental_policy");
-  const causalTargets: Array<[string, 1 | -1 | 0]> = [
-    ["financing_pressure", 1],
-    ["structural_shortage", 1],
-    ["investor_selloff_rental_policy", -1],
-    ["regional_tightness", 1],
-    ["macro_demand", 1],
-  ];
-  const causal: CanvasEdge[] = causalTargets
-    .filter(([from]) => ids.has(from) && ids.has("price_transaction_outcome"))
-    .map(([from, sign]) => ({
-      from,
-      to: "price_transaction_outcome",
-      strength: sign === 0 ? 0.45 : 0.65,
-      sign,
-      relation: sign === 0 ? "contested" as const : "causal" as const,
-    }));
+  // annotated causal / confounder / feedback / conditioning edges: source -> target,
+  // honoring the data's sign + relation (a contested causal edge renders as "contested").
+  const causal: CanvasEdge[] = (res.edges || [])
+    .filter((e) => (e.relation ?? "contains") !== "contains" && ids.has(e.source) && ids.has(e.target))
+    .map((e) => {
+      const rel: CanvasEdge["relation"] =
+        e.contested && e.relation === "causal" ? "contested" : (e.relation as CanvasEdge["relation"]);
+      return {
+        from: e.source,
+        to: e.target,
+        strength: strengthMap(e.strength, e.contested),
+        sign: signMap(e.sign),
+        relation: rel,
+        mechanism: e.mechanism,
+      };
+    });
   const edges: CanvasEdge[] = [...contains, ...causal];
   return { factors, edges };
 }

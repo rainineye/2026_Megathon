@@ -1709,6 +1709,15 @@ def build() -> dict[str, Any]:
     web_factors = build_web_factors(web_by_id, cala_by_id, retrieved_at)
     factors = cala_factors + web_factors
 
+    # --- additive analyst overlay: integrate the gap-scan nodes + annotated causal/
+    # confounder/feedback/conditioning edges with the generated Cala/web tree (union,
+    # not either-or). Canonical def: reference/nl-housing-factor-tree.md. ---
+    overlay_path = APP_TARGET.parent / "factor_overlay.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8")) if overlay_path.exists() else {"nodes": [], "edges": []}
+    existing_ids = {f["id"] for f in factors}
+    overlay_nodes = [n for n in overlay.get("nodes", []) if n["id"] not in existing_ids]
+    factors = factors + overlay_nodes
+
     level_counts: dict[str, int] = {}
     direct_cala_sources = 0
     web_sources = 0
@@ -1739,6 +1748,23 @@ def build() -> dict[str, Any]:
             if source.get("evidence_note_status"):
                 source_status_items.append(source["evidence_note_status"])
     all_status_items = metric_status_items + source_status_items + policy_status_items + outlook_status_items
+
+    # containment edges (tagged) auto-built from every factor's parent (incl. overlay
+    # nodes), then the overlay's annotated non-containment edges appended.
+    all_ids = {f["id"] for f in factors}
+    edges = [
+        {"source": f["parent"], "target": f["id"], "relation": "contains"}
+        for f in factors
+        if f.get("parent")
+    ]
+    edges += [
+        e for e in overlay.get("edges", [])
+        if e.get("source") in all_ids and e.get("target") in all_ids
+    ]
+    edge_relation_counts: dict[str, int] = {}
+    for e in edges:
+        rel = e.get("relation", "contains")
+        edge_relation_counts[rel] = edge_relation_counts.get(rel, 0) + 1
 
     fixture = {
         "case": tree.get("case", "nl_housing"),
@@ -1776,12 +1802,16 @@ def build() -> dict[str, Any]:
             "source_evidence_status_counts": status_counts(source_status_items),
             "policy_evidence_status_counts": status_counts(policy_status_items),
             "outlook_evidence_status_counts": status_counts(outlook_status_items),
+            "edge_count": len(edges),
+            "edge_relation_counts": edge_relation_counts,
+            "overlay_node_count": len(overlay_nodes),
         },
-        "edges": [
-            {"source": factor["parent"], "target": factor["id"]}
-            for factor in factors
-            if factor.get("parent")
-        ],
+        "augmentation": {
+            "source": "app/fixtures/nl_housing/factor_overlay.json",
+            "note": "Analyst gap-scan nodes + annotated causal/confounder/feedback/conditioning edges merged additively. Canonical def: reference/nl-housing-factor-tree.md.",
+            "overlay_nodes": [n["id"] for n in overlay_nodes],
+        },
+        "edges": edges,
         "factors": factors,
         "web_sources": web_registry,
         "security": {"api_key_stored": False},

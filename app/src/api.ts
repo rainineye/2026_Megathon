@@ -133,7 +133,14 @@ export type FactorResearch = {
     policy_evidence_status_counts?: Record<string, number>;
     outlook_evidence_status_counts?: Record<string, number>;
   };
-  edges: Array<{ source: string; target: string }>;
+  edges: Array<{
+    source: string; target: string;
+    relation?: "contains" | "causal" | "confounder" | "feedback" | "conditioning";
+    sign?: "+" | "-" | "?" | string;
+    strength?: string;
+    mechanism?: string;
+    contested?: boolean;
+  }>;
   factors: FactorNode[];
   web_sources?: FactorSource[];
   evidence_status_taxonomy?: Record<string, { label: string; is_already_real: boolean; description: string }>;

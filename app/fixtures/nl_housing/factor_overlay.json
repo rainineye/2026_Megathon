@@ -1,0 +1,644 @@
+{
+  "_doc": "Analyst gap-scan overlay merged ADDITIVELY by scripts/build_nl_housing_app_research_fixture.py. Integrates with the generated Cala/web tree (union, not either-or). Canonical def: reference/nl-housing-factor-tree.md (A/B/G). Containment edges for these nodes are auto-built by the generator from each node's parent; only the annotated causal/confounder/feedback/conditioning edges live here.",
+  "generated_at": "2026-06-20T00:00:00+00:00",
+  "nodes": [
+    {
+      "id": "personal_affordability",
+      "label": "Personal decision layer",
+      "level": 2,
+      "parent": "market_state",
+      "query_id": null,
+      "summary": "User-input + deterministic personal-exposure head (PRD 11/15). Conditions which candidate market-states weigh for THIS user; never mutates market support.",
+      "mechanism": "conditioning (not causal): re-weights scenarios per user via personal_fit",
+      "direction_on_prices": "conditioning_only",
+      "metric_count": 2,
+      "source_count": 0,
+      "top_metrics": [
+        "Inputs: budget, down payment, monthly ceiling, quoted rate, income/stability, move deadline, horizon, risk tolerance, FTB status, region flexibility, rent alternative.",
+        "Fixes the previously dangling parent reference for personal_decision_subdrivers."
+      ],
+      "sources": [],
+      "tagged_metrics": [],
+      "policy_changes": [],
+      "dominant_evidence_status": "analyst_structural",
+      "evidence_status_rollup": {},
+      "actuality_group_rollup": {},
+      "bottleneck_outlook": [],
+      "raw_file": null,
+      "provenance": {
+        "derived_from_source_origins": [
+          "analyst"
+        ],
+        "ui_highlight_tags": [
+          "derived-from:analyst"
+        ],
+        "status": "analyst_added_node",
+        "note": "Gap-scan node; canonical def reference/nl-housing-factor-tree.md. Merged additively by the generator.",
+        "generated_at": "2026-06-20T00:00:00+00:00"
+      }
+    },
+    {
+      "id": "macro_regime_confounder",
+      "label": "Macro regime / risk-off confounder",
+      "level": 3,
+      "parent": "macro_labor_confidence_policy",
+      "query_id": null,
+      "summary": "Latent common cause linking mortgage rates and house prices (structured-tier S2_growth_confounder). The reason rate->price is graph_not_settled.",
+      "mechanism": "confounder: risk-off / growth regime moves BOTH rates and prices; no direct rate->price edge under S2",
+      "direction_on_prices": "confounds_rate_and_price",
+      "metric_count": 2,
+      "source_count": 1,
+      "top_metrics": [
+        "Observable proxies: eurozone GDP downgrade to 0.8% (from 1.2%); energy/geopolitical shock; political-regime uncertainty (coalition collapse 3 Jun 2025).",
+        "Measuring a regime proxy is what would let the splitting test resolve rate->price."
+      ],
+      "sources": [
+        {
+          "label": "OECD Mar 2026: eurozone GDP cut to 0.8% (energy/Strait of Hormuz)",
+          "url": "https://tradingeconomics.com/netherlands/gdp-growth",
+          "domain": "tradingeconomics.com",
+          "source_origin": "web",
+          "source_provider": "web_search",
+          "ui_highlight_tags": [
+            "source:web"
+          ],
+          "retrieved_at": "2026-06-20T00:00:00+00:00"
+        }
+      ],
+      "tagged_metrics": [],
+      "policy_changes": [],
+      "dominant_evidence_status": "analyst_structural",
+      "evidence_status_rollup": {},
+      "actuality_group_rollup": {},
+      "bottleneck_outlook": [],
+      "raw_file": null,
+      "provenance": {
+        "derived_from_source_origins": [
+          "analyst"
+        ],
+        "ui_highlight_tags": [
+          "derived-from:analyst"
+        ],
+        "status": "analyst_added_node",
+        "note": "Gap-scan node; canonical def reference/nl-housing-factor-tree.md. Merged additively by the generator.",
+        "generated_at": "2026-06-20T00:00:00+00:00"
+      }
+    },
+    {
+      "id": "expectations_reflexivity",
+      "label": "Expectations / reflexivity loop",
+      "level": 3,
+      "parent": "macro_demand",
+      "query_id": null,
+      "summary": "Self-reinforcing feedback: price momentum and bank forecasts shape buyer/seller expectations, which feed demand, which moves price.",
+      "mechanism": "feedback (loop): momentum -> expectations -> demand -> price -> momentum",
+      "direction_on_prices": "amplifies_moves_both_ways",
+      "metric_count": 2,
+      "source_count": 0,
+      "top_metrics": [
+        "FOMO / fear-of-further-rises amplifies upswings; cooling expectations amplify downswings.",
+        "Fed by forecast_dispersion (ING1.5 / ABN3 / Rabo3.1, 2026)."
+      ],
+      "sources": [],
+      "tagged_metrics": [],
+      "policy_changes": [],
+      "dominant_evidence_status": "analyst_structural",
+      "evidence_status_rollup": {},
+      "actuality_group_rollup": {},
+      "bottleneck_outlook": [],
+      "raw_file": null,
+      "provenance": {
+        "derived_from_source_origins": [
+          "analyst"
+        ],
+        "ui_highlight_tags": [
+          "derived-from:analyst"
+        ],
+        "status": "analyst_added_node",
+        "note": "Gap-scan node; canonical def reference/nl-housing-factor-tree.md. Merged additively by the generator.",
+        "generated_at": "2026-06-20T00:00:00+00:00"
+      }
+    },
+    {
+      "id": "forecast_dispersion",
+      "label": "House-price forecast dispersion",
+      "level": 3,
+      "parent": "price_transaction_outcome",
+      "query_id": null,
+      "summary": "The visible contested expectation band for 2026 - the spread across major bank forecasts is itself the market contestedness.",
+      "mechanism": "expectation signal feeding reflexivity; wide spread = high disagreement",
+      "direction_on_prices": "contested_band",
+      "metric_count": 2,
+      "source_count": 2,
+      "top_metrics": [
+        "2026 forecasts: ING ~+1.5% / ABN AMRO +3% / Rabobank +3.1% (revised down from +4.8% in Dec 2025).",
+        "Drivers cited: ex-rental supply + construction vs higher rates + cautious sentiment."
+      ],
+      "sources": [
+        {
+          "label": "ABN AMRO: house prices to rise ~3% in 2026 (+4% 2027)",
+          "url": "https://www.abnamro.com/en/news/house-prices-set-to-rise-by-3-percent-in-2026",
+          "domain": "abnamro.com",
+          "source_origin": "web",
+          "source_provider": "web_search",
+          "ui_highlight_tags": [
+            "source:web"
+          ],
+          "retrieved_at": "2026-06-20T00:00:00+00:00"
+        },
+        {
+          "label": "Rabobank: ~+3.1% 2026 (cut from +4.8% Dec 2025); ING most cautious ~+1.5%",
+          "url": "https://www.rabobank.com/knowledge/d011517250-housing-market-quarterly-house-prices-will-rise-slightly-this-year",
+          "domain": "rabobank.com",
+          "source_origin": "web",
+          "source_provider": "web_search",
+          "ui_highlight_tags": [
+            "source:web"
+          ],
+          "retrieved_at": "2026-06-20T00:00:00+00:00"
+        }
+      ],
+      "tagged_metrics": [],
+      "policy_changes": [],
+      "dominant_evidence_status": "review_needed",
+      "evidence_status_rollup": {},
+      "actuality_group_rollup": {},
+      "bottleneck_outlook": [],
+      "raw_file": null,
+      "provenance": {
+        "derived_from_source_origins": [
+          "web"
+        ],
+        "ui_highlight_tags": [
+          "derived-from:web"
+        ],
+        "status": "analyst_added_node",
+        "note": "Gap-scan node; canonical def reference/nl-housing-factor-tree.md. Merged additively by the generator.",
+        "generated_at": "2026-06-20T00:00:00+00:00"
+      }
+    },
+    {
+      "id": "bond_swap_yields",
+      "label": "Bond / swap (long) yields",
+      "level": 3,
+      "parent": "borrow_interest_credit_channel",
+      "query_id": null,
+      "summary": "Long-term capital-market yields that drive 10y+ fixed mortgage rates beyond the ECB policy rate.",
+      "mechanism": "causal: long yields set 10y+ fixed mortgage pricing",
+      "direction_on_prices": "up_yields_raise_fixed_rates",
+      "metric_count": 2,
+      "source_count": 2,
+      "top_metrics": [
+        "10y fixed Dutch mortgage rate band 3.6-4.3% (NHG vs non-NHG), DNB Mar 2026; ECB 2.25% Jun 2026.",
+        "Long rates track bond/swap markets, not only ECB policy."
+      ],
+      "sources": [
+        {
+          "label": "DNB bank mortgage lending rates dashboard",
+          "url": "https://www.dnb.nl/en/statistics/dashboards/residential-mortgages/bank-mortgage-lending-rates/",
+          "domain": "dnb.nl",
+          "source_origin": "web",
+          "source_provider": "web_search",
+          "ui_highlight_tags": [
+            "source:web"
+          ],
+          "retrieved_at": "2026-06-20T00:00:00+00:00"
+        },
+        {
+          "label": "OHAO: 10y fixed ~3.6-4.3%; long rates may rise slightly with bond yields",
+          "url": "https://www.ohao.nl/expats/library/mortgage-interest-rates-2026/",
+          "domain": "ohao.nl",
+          "source_origin": "web",
+          "source_provider": "web_search",
+          "ui_highlight_tags": [
+            "source:web"
+          ],
+          "retrieved_at": "2026-06-20T00:00:00+00:00"
+        }
+      ],
+      "tagged_metrics": [],
+      "policy_changes": [],
+      "dominant_evidence_status": "review_needed",
+      "evidence_status_rollup": {},
+      "actuality_group_rollup": {},
+      "bottleneck_outlook": [],
+      "raw_file": null,
+      "provenance": {
+        "derived_from_source_origins": [
+          "web"
+        ],
+        "ui_highlight_tags": [
+          "derived-from:web"
+        ],
+        "status": "analyst_added_node",
+        "note": "Gap-scan node; canonical def reference/nl-housing-factor-tree.md. Merged additively by the generator.",
+        "generated_at": "2026-06-20T00:00:00+00:00"
+      }
+    },
+    {
+      "id": "mortgage_interest_deduction",
+      "label": "Mortgage interest deduction (hypotheekrenteaftrek)",
+      "level": 3,
+      "parent": "borrow_interest_credit_channel",
+      "query_id": null,
+      "summary": "Major NL-specific tax subsidy that lowers the effective cost of mortgage debt; deduction capped at the basic income-tax bracket and gradually narrowed.",
+      "mechanism": "causal: HRA raises effective affordability / supports prices",
+      "direction_on_prices": "supports_prices",
+      "metric_count": 2,
+      "source_count": 1,
+      "top_metrics": [
+        "Lowers effective mortgage cost; deduction capped at the basic bracket; 2011 scale ~EUR14bn (~2.5% GDP).",
+        "Interacts with borrowing capacity and the rate channel."
+      ],
+      "sources": [
+        {
+          "label": "Trace_Core timeseries mortgage_interest_deduction_cost (~EUR14bn 2011, ~2.5% GDP)",
+          "url": "",
+          "domain": "trace_core",
+          "source_origin": "derived",
+          "source_provider": "analyst_derived",
+          "ui_highlight_tags": [
+            "source:derived"
+          ],
+          "retrieved_at": "2026-06-20T00:00:00+00:00"
+        }
+      ],
+      "tagged_metrics": [],
+      "policy_changes": [],
+      "dominant_evidence_status": "review_needed",
+      "evidence_status_rollup": {},
+      "actuality_group_rollup": {},
+      "bottleneck_outlook": [],
+      "raw_file": null,
+      "provenance": {
+        "derived_from_source_origins": [
+          "cala"
+        ],
+        "ui_highlight_tags": [
+          "derived-from:cala"
+        ],
+        "status": "analyst_added_node",
+        "note": "Gap-scan node; canonical def reference/nl-housing-factor-tree.md. Merged additively by the generator.",
+        "generated_at": "2026-06-20T00:00:00+00:00"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "bond_swap_yields",
+      "target": "borrow_interest_credit_channel",
+      "relation": "causal",
+      "mechanism": "Long yields set 10y+ fixed mortgage pricing",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "macro_labor_confidence_policy",
+      "target": "borrow_interest_credit_channel",
+      "relation": "causal",
+      "mechanism": "ECB/inflation policy feeds through to mortgage rates",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "web"
+      ]
+    },
+    {
+      "source": "borrow_interest_credit_channel",
+      "target": "income_borrowing_capacity",
+      "relation": "causal",
+      "mechanism": "Higher rates cut borrowing capacity / bid ceilings",
+      "contested": false,
+      "strength": "strong",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "-"
+    },
+    {
+      "source": "mortgage_interest_deduction",
+      "target": "income_borrowing_capacity",
+      "relation": "causal",
+      "mechanism": "HRA raises effective affordability",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "nibud_lending_standards_2026",
+      "target": "income_borrowing_capacity",
+      "relation": "causal",
+      "mechanism": "Nibud norms set capacity (wage +4.1% 2026)",
+      "contested": false,
+      "strength": "strong",
+      "provenance": [
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "income_borrowing_capacity",
+      "target": "price_transaction_outcome",
+      "relation": "causal",
+      "mechanism": "DEMAND CHANNEL (S1/S3): capacity sets bid ceilings",
+      "contested": false,
+      "strength": "strong",
+      "provenance": [
+        "cala"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "borrow_interest_credit_channel",
+      "target": "price_transaction_outcome",
+      "relation": "causal",
+      "mechanism": "THE CONTESTED EDGE: rate->price is graph_not_settled. Real via borrowing_capacity in S1/S3; absent (confounded) in S2.",
+      "contested": true,
+      "strength": "contested",
+      "provenance": [
+        "derived"
+      ],
+      "sign": "?",
+      "claim_state": "graph_not_settled",
+      "splitting_test": "mortgage_rate _||_ house_price | borrowing_capacity",
+      "engine_node": "rate_price_splitting_test"
+    },
+    {
+      "source": "macro_regime_confounder",
+      "target": "borrow_interest_credit_channel",
+      "relation": "confounder",
+      "mechanism": "S2 latent common cause: risk-off regime moves rates",
+      "contested": true,
+      "strength": "contested",
+      "provenance": [
+        "analyst",
+        "web"
+      ]
+    },
+    {
+      "source": "macro_regime_confounder",
+      "target": "price_transaction_outcome",
+      "relation": "confounder",
+      "mechanism": "S2 latent common cause: risk-off regime moves prices (why rate->price is unsettled)",
+      "contested": true,
+      "strength": "contested",
+      "provenance": [
+        "analyst"
+      ]
+    },
+    {
+      "source": "structural_shortage",
+      "target": "price_transaction_outcome",
+      "relation": "causal",
+      "mechanism": "SUPPLY CHANNEL (S3): shortage lifts prices",
+      "contested": false,
+      "strength": "strong",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "supply_bottleneck_breakdown",
+      "target": "structural_shortage",
+      "relation": "causal",
+      "mechanism": "Nitrogen/grid/viability/execution throttle the pipeline -> shortage",
+      "contested": false,
+      "strength": "strong",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "nitrogen_construction_constraint",
+      "target": "supply_pipeline_subdrivers",
+      "relation": "causal",
+      "mechanism": "Permitting blocks completions",
+      "contested": false,
+      "strength": "strong",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "-"
+    },
+    {
+      "source": "grid_capacity_outlook",
+      "target": "development_viability_execution",
+      "relation": "causal",
+      "mechanism": "Connection queues delay/raise cost of projects",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "-"
+    },
+    {
+      "source": "box3_private_rental_tax_channel",
+      "target": "affordable_rent_landlord_exit",
+      "relation": "causal",
+      "mechanism": "Box3/tax pushes private landlords to sell",
+      "contested": false,
+      "strength": "strong",
+      "provenance": [
+        "cala"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "rental_regulation_box3",
+      "target": "affordable_rent_landlord_exit",
+      "relation": "causal",
+      "mechanism": "Affordable Rent Act caps rents -> landlord exit. TWO-SIDED + reversal watch.",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "+",
+      "two_sided": true,
+      "reversal_watch": "cabinet plans to ease rent controls"
+    },
+    {
+      "source": "affordable_rent_landlord_exit",
+      "target": "price_transaction_outcome",
+      "relation": "causal",
+      "mechanism": "INVESTOR_WINDOW: ex-rental supply eases owner-occupied prices",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "-"
+    },
+    {
+      "source": "affordable_rent_landlord_exit",
+      "target": "rental_market_pressure",
+      "relation": "causal",
+      "mechanism": "Fewer private rentals -> rental scarcity (the other side)",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "macro_labor_confidence_policy",
+      "target": "income_borrowing_capacity",
+      "relation": "causal",
+      "mechanism": "Wages/employment set real income & capacity",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "demographics_migration_household_formation",
+      "target": "price_transaction_outcome",
+      "relation": "causal",
+      "mechanism": "Household formation -> demand -> price",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala",
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "equity_wealth_liquidity_channel",
+      "target": "personal_affordability",
+      "relation": "causal",
+      "mechanism": "Wealth/gifts -> down-payment capacity (WEAK / unquantified)",
+      "contested": false,
+      "strength": "weak",
+      "provenance": [
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "regional_tightness",
+      "target": "price_transaction_outcome",
+      "relation": "causal",
+      "mechanism": "REGIONAL_DIVERGENCE: local tightness modulates price",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "cala"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "credit_risk_arrears",
+      "target": "financing_pressure",
+      "relation": "causal",
+      "mechanism": "Arrears/defaults tighten credit & financial-stability buffers",
+      "contested": false,
+      "strength": "weak",
+      "provenance": [
+        "cala"
+      ],
+      "sign": "-"
+    },
+    {
+      "source": "price_transaction_outcome",
+      "target": "expectations_reflexivity",
+      "relation": "feedback",
+      "mechanism": "Price momentum feeds expectations",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "analyst"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "expectations_reflexivity",
+      "target": "price_transaction_outcome",
+      "relation": "feedback",
+      "mechanism": "Self-fulfilling demand (FOMO) moves price",
+      "contested": false,
+      "strength": "moderate",
+      "provenance": [
+        "analyst"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "forecast_dispersion",
+      "target": "expectations_reflexivity",
+      "relation": "causal",
+      "mechanism": "Bank forecasts (1.5-3.1%) shape expectations",
+      "contested": false,
+      "strength": "weak",
+      "provenance": [
+        "web"
+      ],
+      "sign": "+"
+    },
+    {
+      "source": "personal_affordability",
+      "target": "financing_pressure",
+      "relation": "conditioning",
+      "mechanism": "User vars re-weight this scenario FOR them (PRD 15: never mutates market support)",
+      "contested": false,
+      "strength": "n/a",
+      "provenance": [
+        "analyst"
+      ]
+    },
+    {
+      "source": "personal_affordability",
+      "target": "structural_shortage",
+      "relation": "conditioning",
+      "mechanism": "User vars re-weight this scenario FOR them (PRD 15: never mutates market support)",
+      "contested": false,
+      "strength": "n/a",
+      "provenance": [
+        "analyst"
+      ]
+    },
+    {
+      "source": "personal_affordability",
+      "target": "investor_selloff_rental_policy",
+      "relation": "conditioning",
+      "mechanism": "User vars re-weight this scenario FOR them (PRD 15: never mutates market support)",
+      "contested": false,
+      "strength": "n/a",
+      "provenance": [
+        "analyst"
+      ]
+    },
+    {
+      "source": "personal_affordability",
+      "target": "regional_tightness",
+      "relation": "conditioning",
+      "mechanism": "User vars re-weight this scenario FOR them (PRD 15: never mutates market support)",
+      "contested": false,
+      "strength": "n/a",
+      "provenance": [
+        "analyst"
+      ]
+    }
+  ]
+}
