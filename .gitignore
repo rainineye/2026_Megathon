@@ -44,3 +44,6 @@ __pycache__/
 app/engine/trace_engine.py
 app/engine/trace_structured.py
 app/engine/trace_bridge.py
+
+# strategy/product notes — LOCAL ONLY (IP), never published
+work/
