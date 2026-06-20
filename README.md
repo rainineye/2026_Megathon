@@ -1,6 +1,6 @@
 # Trace Personal — a decision-intelligence cockpit
 
-> It looks like a market dashboard, but behaves like an auditable argument.
+> An instrument for navigating through uncertainty and complexity.
 
 A desktop/web **decision cockpit** for high-stakes personal market decisions. It fuses
 three things in one workspace — **public facts/evidence**, **expert judgment**, and the
