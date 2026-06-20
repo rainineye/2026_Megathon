@@ -5,7 +5,62 @@ type PersonalAdviceResponse = {
   context: unknown;
 };
 
-export async function runPersonalAdvice(): Promise<TraceDemoOutput> {
+export type PersonalVariables = Record<string, unknown>;
+
+export type PersonalProfile = {
+  id: string;
+  label: string;
+  variables: PersonalVariables;
+  relevant_candidates?: string[];
+  relevant_actions?: string[];
+};
+
+export type FactorSource = {
+  label: string;
+  url?: string | null;
+  domain?: string | null;
+  context_id?: string | null;
+};
+
+export type FactorNode = {
+  id: string;
+  label: string;
+  level: number;
+  parent?: string | null;
+  query_id?: string | null;
+  summary: string;
+  metric_count: number;
+  source_count: number;
+  top_metrics: string[];
+  sources: FactorSource[];
+  raw_file?: string | null;
+  provenance?: {
+    source_origin?: string;
+    raw_response?: string;
+    status?: string;
+  };
+};
+
+export type FactorResearch = {
+  case: string;
+  retrieved_at?: string;
+  generated_from?: string;
+  coverage_status: string;
+  coverage_note?: string;
+  rollups: {
+    factor_count?: number;
+    level_counts?: Record<string, number>;
+    raw_response_count?: number;
+    metric_line_count?: number;
+    source_link_count?: number;
+  };
+  edges: Array<{ source: string; target: string }>;
+  factors: FactorNode[];
+};
+
+export async function runPersonalAdvice(
+  personalVariables: PersonalVariables | null = null
+): Promise<TraceDemoOutput> {
   const response = await fetch(`${API_BASE_URL}/api/run-personal-advice`, {
     method: "POST",
     headers: {
@@ -13,14 +68,7 @@ export async function runPersonalAdvice(): Promise<TraceDemoOutput> {
     },
     body: JSON.stringify({
       case: "nl_housing",
-      personal_variables: {
-        target_region: "Randstad flexible",
-        budget_eur: 520000,
-        down_payment_eur: 95000,
-        monthly_ceiling_eur: 2450,
-        move_urgency: "medium",
-        risk_tolerance: "moderate"
-      },
+      personal_variables: personalVariables ?? {},
       expert_notes: []
     })
   });
@@ -60,6 +108,19 @@ export async function health(): Promise<EngineOutput> {
   const response = await fetch(`${API_BASE_URL}/api/health`);
   if (!response.ok) throw new Error(`Trace API health returned ${response.status}`);
   return (await response.json()) as EngineOutput;
+}
+
+export async function fetchFactorTree(): Promise<FactorResearch> {
+  const response = await fetch(`${API_BASE_URL}/api/factor-tree`);
+  if (!response.ok) throw new Error(`Trace API factor-tree returned ${response.status}`);
+  return (await response.json()) as FactorResearch;
+}
+
+export async function fetchPersonalProfiles(): Promise<PersonalProfile[]> {
+  const response = await fetch(`${API_BASE_URL}/api/personal-profiles`);
+  if (!response.ok) throw new Error(`Trace API personal-profiles returned ${response.status}`);
+  const payload = (await response.json()) as { profiles: PersonalProfile[] };
+  return payload.profiles;
 }
 
 /** Default tier: distribution / coverage / credibility / candidate_status. */

@@ -92,7 +92,8 @@ def index() -> dict:
         "service": "Trace Personal — engine API",
         "note": "This is the engine API, not the UI. The cockpit UI runs on the Vite frontend (:5173).",
         "interactive_docs": "/docs",
-        "endpoints": ["/api/health", "/api/run-default-tier", "/api/run-structured-tier",
+        "endpoints": ["/api/health", "/api/factor-tree", "/api/personal-profiles",
+                      "/api/run-default-tier", "/api/run-structured-tier",
                       "/api/run-bridge", "/api/run-personal-advice"],
         "input_source": case_source(),
     }
@@ -102,6 +103,16 @@ def index() -> dict:
 def health() -> dict:
     return {"ok": True, "engine": "trace", "case": "nl_housing",
             "deterministic": True, "input_source": case_source()}
+
+
+@app.get("/api/factor-tree")
+def factor_tree() -> dict:
+    return jsonable(fixtures_loader.factor_research())
+
+
+@app.get("/api/personal-profiles")
+def personal_profiles() -> dict:
+    return {"case": "nl_housing", "profiles": jsonable(fixtures_loader.personal_profiles())}
 
 
 @app.post("/api/run-default-tier")

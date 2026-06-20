@@ -150,7 +150,8 @@ nav button small {
 
 nav button.active,
 nav button:hover,
-.snapshot-list button:hover {
+.snapshot-list button:hover,
+.snapshot-list button.active {
   background: #193b35;
   color: #ffffff;
 }
@@ -428,6 +429,11 @@ section {
   font-size: 13px;
 }
 
+.impact-meter small {
+  color: #66746f;
+  font-size: 12px;
+}
+
 .bar-wrap {
   background: #edf2ef;
   border-radius: 999px;
@@ -628,7 +634,11 @@ section {
 
 .comparison-row {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) 120px 28px;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, auto);
+}
+
+.comparison-row strong {
+  text-align: right;
 }
 
 .action-layout {
@@ -661,4 +671,17 @@ pre {
   color: #7c2b1d;
   margin-bottom: 16px;
   padding: 12px;
+}
+
+.source-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.source-list a {
+  color: #16796e;
+  font-weight: 700;
+  text-decoration: none;
 }

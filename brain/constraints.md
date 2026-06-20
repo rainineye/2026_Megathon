@@ -16,3 +16,4 @@ type: constraints
 - FORBID: secrets
 - FORBID: force-push
 - FORBID: hardcoded/placeholder evidence in any number shown to the user — every figure must trace to real data (Cala output / `fixtures/nl_housing/*` / a tool-fetched source with url). `run_demo.py`'s `build_default_case()` + `build_structured_case()` are hand-typed placeholders and must NOT be used to produce user-facing numbers.
+- FORBID: assigning `source_origin: "cala"` or `source:cala` UI tags to data that was not directly read from raw Cala responses; web/browser/manual/tool-fetched sources and analyst-derived artifacts must use their own provenance or `derived-from:cala`, never direct Cala labels.

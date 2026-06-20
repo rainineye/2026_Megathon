@@ -59,3 +59,16 @@ def personal_profiles():
         return _load("personal_profiles.json")
     except FileNotFoundError:
         return []
+
+
+def factor_research():
+    try:
+        return _load("factor_research.json")
+    except FileNotFoundError:
+        return {
+            "case": "nl_housing",
+            "coverage_status": "missing",
+            "factors": [],
+            "edges": [],
+            "rollups": {},
+        }

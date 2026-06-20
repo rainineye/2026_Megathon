@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { engineBaseUrl, runPersonalAdvice } from "./api";
+import {
+  engineBaseUrl,
+  fetchFactorTree,
+  fetchPersonalProfiles,
+  runPersonalAdvice,
+  type FactorNode,
+  type FactorResearch,
+  type FactorSource,
+  type PersonalProfile,
+  type PersonalVariables
+} from "./api";
 
 type View = "brief" | "market" | "evidence" | "personal" | "action" | "audit";
 type InspectorKind = "recommendation" | "market" | "evidence" | "personal" | "audit";
@@ -18,6 +28,7 @@ type InspectorSelection = {
   title: string;
   meta: string;
   body: string;
+  sources?: FactorSource[];
 };
 
 const navItems: Array<{ id: View; label: string; meta: string }> = [
@@ -31,104 +42,6 @@ const navItems: Array<{ id: View; label: string; meta: string }> = [
 
 const horizonOptions = ["3M", "6M", "12M", "24M"];
 
-const marketForces = [
-  {
-    name: "Demand pressure",
-    signal: "rising",
-    confidence: "medium",
-    density: 78,
-    recency: "fresh",
-    driver: "Income growth and competition in high-demand cities keep buyer pressure visible."
-  },
-  {
-    name: "Supply tightness",
-    signal: "tight",
-    confidence: "high",
-    density: 86,
-    recency: "fresh",
-    driver: "Shortage and construction bottlenecks remain the strongest structural story."
-  },
-  {
-    name: "Financing conditions",
-    signal: "mixed",
-    confidence: "medium",
-    density: 64,
-    recency: "fresh",
-    driver: "Rates soften some pressure but monthly affordability still gates this user."
-  },
-  {
-    name: "Construction pipeline",
-    signal: "blocked",
-    confidence: "medium",
-    density: 58,
-    recency: "recent",
-    driver: "Grid congestion and permit delays make future supply less reliable."
-  },
-  {
-    name: "Policy pressure",
-    signal: "mixed",
-    confidence: "low",
-    density: 46,
-    recency: "review",
-    driver: "Rental regulation may push investors to sell, but absorption is disputed."
-  },
-  {
-    name: "Regional divergence",
-    signal: "rising",
-    confidence: "medium",
-    density: 52,
-    recency: "recent",
-    driver: "National averages hide city and segment-level competition."
-  }
-];
-
-const evidenceRows = [
-  {
-    source: "ABN AMRO",
-    claim: "Price growth remains resilient despite global uncertainty.",
-    type: "Fact",
-    impact: "Supports buy selectively",
-    confidence: "medium"
-  },
-  {
-    source: "DNB / AFM",
-    claim: "Mortgage debt and affordability sensitivity remain elevated.",
-    type: "Signal",
-    impact: "Supports budget caution",
-    confidence: "medium"
-  },
-  {
-    source: "OpenRaad / municipalities",
-    claim: "Grid congestion can delay housing construction in major cities.",
-    type: "Causal type",
-    impact: "Supports shortage story",
-    confidence: "medium"
-  },
-  {
-    source: "Rabobank",
-    claim: "Regional house price differences are widening.",
-    type: "Claim",
-    impact: "Supports region compare",
-    confidence: "medium"
-  },
-  {
-    source: "Expert note",
-    claim: "Investor sell-off may be absorbed quickly by latent demand.",
-    type: "Assumption",
-    impact: "Disputes buying window",
-    confidence: "low"
-  }
-];
-
-const personalVariables = [
-  { label: "Target region", value: "Randstad flexible", tone: "personal" },
-  { label: "Purchase budget", value: "EUR 520k", tone: "personal" },
-  { label: "Down payment", value: "EUR 95k", tone: "personal" },
-  { label: "Monthly ceiling", value: "EUR 2,450", tone: "risk" },
-  { label: "Move urgency", value: "Medium", tone: "watch" },
-  { label: "Risk tolerance", value: "Moderate", tone: "personal" }
-];
-
 function percent(value = 0) {
   return `${Math.round(value * 100)}%`;
 }
@@ -137,10 +50,40 @@ function supportWidth(value = 0) {
   return `${Math.max(4, Math.round(value * 100))}%`;
 }
 
+function eur(value?: number | null) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "needs input";
+  return new Intl.NumberFormat("en-NL", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
+function profileNumber(vars: PersonalVariables, key: string) {
+  const value = vars[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function normalizeProfileVariables(vars: PersonalVariables): PersonalVariables {
+  return {
+    ...vars,
+    monthly_ceiling_eur: vars.monthly_ceiling_eur ?? vars.monthly_max_eur
+  };
+}
+
+function factorCoverageWidth(factor: FactorNode) {
+  const derived = factor.source_count * 5 + factor.metric_count;
+  return `${Math.max(6, Math.min(100, derived))}%`;
+}
+
 function App() {
   const [view, setView] = useState<View>("brief");
   const [horizon, setHorizon] = useState("6M");
   const [output, setOutput] = useState<TraceDemoOutput | null>(null);
+  const [factorResearch, setFactorResearch] = useState<FactorResearch | null>(null);
+  const [profiles, setProfiles] = useState<PersonalProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [personalVariables, setPersonalVariables] = useState<PersonalVariables>({});
   const [selection, setSelection] = useState<InspectorSelection>({
     kind: "recommendation",
     title: "Recommendation logic",
@@ -150,11 +93,11 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function runEngine() {
+  async function runEngine(vars = personalVariables) {
     setLoading(true);
     setError(null);
     try {
-      const result = await runPersonalAdvice();
+      const result = await runPersonalAdvice(vars);
       setOutput(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -164,7 +107,52 @@ function App() {
   }
 
   useEffect(() => {
-    runEngine();
+    let cancelled = false;
+
+    async function boot() {
+      setLoading(true);
+      setError(null);
+      let vars: PersonalVariables = {};
+
+      try {
+        const [profileResult, factorResult] = await Promise.allSettled([
+          fetchPersonalProfiles(),
+          fetchFactorTree()
+        ]);
+
+        if (cancelled) return;
+
+        if (factorResult.status === "fulfilled") {
+          setFactorResearch(factorResult.value);
+        } else {
+          setError(factorResult.reason instanceof Error ? factorResult.reason.message : String(factorResult.reason));
+        }
+
+        if (profileResult.status === "fulfilled") {
+          setProfiles(profileResult.value);
+          const first = profileResult.value[0];
+          if (first) {
+            vars = normalizeProfileVariables(first.variables);
+            setPersonalVariables(vars);
+            setActiveProfileId(first.id);
+          }
+        } else {
+          setError(profileResult.reason instanceof Error ? profileResult.reason.message : String(profileResult.reason));
+        }
+
+        const result = await runPersonalAdvice(vars);
+        if (!cancelled) setOutput(result);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    boot();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const candidates = useMemo<CandidateSummary[]>(() => {
@@ -183,6 +171,16 @@ function App() {
 
   const topCandidate = candidates[0];
   const freshness = output ? "fixture fresh" : loading ? "loading" : "offline";
+  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0] ?? null;
+  const factorCount = factorResearch?.rollups.factor_count ?? 0;
+  const sourceCount = factorResearch?.rollups.source_link_count ?? 0;
+
+  function selectProfile(profile: PersonalProfile) {
+    const vars = normalizeProfileVariables(profile.variables);
+    setActiveProfileId(profile.id);
+    setPersonalVariables(vars);
+    runEngine(vars);
+  }
 
   return (
     <div className="app-shell">
@@ -216,9 +214,18 @@ function App() {
 
         <div className="snapshot-list">
           <span className="eyebrow">Saved scenarios</span>
-          <button>Baseline renter</button>
-          <button>Higher down payment</button>
-          <button>Alternate city</button>
+          {(profiles.length ? profiles : [{ id: "loading", label: "Loading profiles", variables: {} }]).map(
+            (profile) => (
+              <button
+                key={profile.id}
+                className={profile.id === activeProfileId ? "active" : ""}
+                onClick={() => selectProfile(profile)}
+                disabled={profile.id === "loading"}
+              >
+                {profile.label}
+              </button>
+            )
+          )}
         </div>
       </aside>
 
@@ -243,7 +250,7 @@ function App() {
             </div>
             <StatusPill label={freshness} tone={output ? "good" : "watch"} />
             <StatusPill label={output?.claim_resolution.state ?? "engine pending"} tone="watch" />
-            <button className="primary-action" onClick={runEngine} disabled={loading}>
+            <button className="primary-action" onClick={() => runEngine()} disabled={loading}>
               {loading ? "Running" : "Refresh"}
             </button>
           </div>
@@ -251,8 +258,8 @@ function App() {
 
         {error && (
           <div className="error">
-            Trace API is unavailable at {engineBaseUrl}. The wireframe still renders with static UI
-            scaffolding; start the local API to populate engine values.
+            Trace API is unavailable at {engineBaseUrl}: {error}. Start the local API to populate
+            engine values and Cala-backed factor research.
           </div>
         )}
 
@@ -260,7 +267,10 @@ function App() {
           <MetricCard label="Recommended posture" value={output?.recommendation.posture ?? "Pending"} />
           <MetricCard label="Confidence" value={output?.recommendation.confidence ?? "Unknown"} />
           <MetricCard label="Top market state" value={topCandidate?.label ?? "Waiting for engine"} />
-          <MetricCard label="Relative support" value={topCandidate ? percent(topCandidate.support) : "--"} />
+          <MetricCard
+            label="Research coverage"
+            value={factorCount ? `${factorCount} factors · ${sourceCount} links` : "--"}
+          />
         </section>
 
         <section className="content-grid">
@@ -268,9 +278,18 @@ function App() {
             {view === "brief" && (
               <DecisionBrief output={output} candidates={candidates} onSelect={setSelection} />
             )}
-            {view === "market" && <MarketMap onSelect={setSelection} />}
-            {view === "evidence" && <EvidenceBoard onSelect={setSelection} />}
-            {view === "personal" && <PersonalFit onSelect={setSelection} />}
+            {view === "market" && <MarketMap factorResearch={factorResearch} onSelect={setSelection} />}
+            {view === "evidence" && (
+              <EvidenceBoard factorResearch={factorResearch} onSelect={setSelection} />
+            )}
+            {view === "personal" && (
+              <PersonalFit
+                output={output}
+                profile={activeProfile}
+                variables={personalVariables}
+                onSelect={setSelection}
+              />
+            )}
             {view === "action" && <ActionPlan output={output} onSelect={setSelection} />}
             {view === "audit" && <Audit output={output} onSelect={setSelection} />}
           </div>
@@ -339,10 +358,44 @@ function DecisionBrief({
         <article className="impact-panel">
           <span className="eyebrow">Personal impact</span>
           <div className="impact-grid">
-            <ImpactMeter label="Affordability pressure" value={72} tone="risk" />
-            <ImpactMeter label="Budget resilience" value={54} tone="watch" />
-            <ImpactMeter label="Timing risk" value={66} tone="watch" />
-            <ImpactMeter label="Rate exposure" value={61} tone="personal" />
+            <ImpactMetric
+              label="Monthly buffer"
+              value={eur(output?.personal_fit?.affordability_buffer?.eur_per_month)}
+              detail={output?.personal_fit?.affordability_buffer?.status ?? "needs profile"}
+              tone={output?.personal_fit?.affordability_buffer?.status === "negative" ? "risk" : "personal"}
+              barValue={
+                typeof output?.personal_fit?.affordability_buffer?.pct_of_ceiling === "number"
+                  ? Math.max(
+                      0,
+                      Math.min(100, output.personal_fit.affordability_buffer.pct_of_ceiling)
+                    )
+                  : undefined
+              }
+            />
+            <ImpactMetric
+              label="Payment at quoted rate"
+              value={eur(output?.personal_fit?.inputs?.monthly_payment_eur)}
+              detail={
+                output?.personal_fit?.inputs?.quoted_rate_pct
+                  ? `${output.personal_fit.inputs.quoted_rate_pct}% user quote`
+                  : "quote missing"
+              }
+              tone="watch"
+            />
+            <ImpactMetric
+              label="+100bps exposure"
+              value={`${eur(output?.personal_fit?.rate_exposure?.per_plus_100bps_eur)}/mo`}
+              detail="standard annuity sensitivity"
+              tone="risk"
+            />
+            <ImpactMetric
+              label="Wait-cost range"
+              value={`${eur(output?.personal_fit?.opportunity_cost_of_waiting?.low_eur)} to ${eur(
+                output?.personal_fit?.opportunity_cost_of_waiting?.high_eur
+              )}`}
+              detail={`${output?.personal_fit?.opportunity_cost_of_waiting?.window_months ?? "--"} month window`}
+              tone="personal"
+            />
           </div>
         </article>
       </section>
@@ -393,24 +446,31 @@ function DecisionBrief({
   );
 }
 
-function ImpactMeter({
+function ImpactMetric({
   label,
   value,
-  tone
+  detail,
+  tone,
+  barValue
 }: {
   label: string;
-  value: number;
+  value: string;
+  detail: string;
   tone: "risk" | "watch" | "personal";
+  barValue?: number;
 }) {
   return (
     <div className="impact-meter">
       <div>
         <span>{label}</span>
-        <strong>{value}/100</strong>
+        <strong>{value}</strong>
       </div>
-      <div className="bar-wrap">
-        <span className={`bar ${tone}`} style={{ width: `${value}%` }} />
-      </div>
+      <small>{detail}</small>
+      {typeof barValue === "number" && (
+        <div className="bar-wrap">
+          <span className={`bar ${tone}`} style={{ width: `${Math.max(4, barValue)}%` }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -431,56 +491,81 @@ function Watchlist({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function MarketMap({ onSelect }: { onSelect: (selection: InspectorSelection) => void }) {
+function MarketMap({
+  factorResearch,
+  onSelect
+}: {
+  factorResearch: FactorResearch | null;
+  onSelect: (selection: InspectorSelection) => void;
+}) {
+  const factors = (factorResearch?.factors ?? []).filter((factor) => factor.level === 2);
   return (
     <div className="stack">
       <div className="section-heading">
         <div>
           <span className="eyebrow">Market Map</span>
-          <h2>Forces pulling the decision in different directions</h2>
+          <h2>Cala-backed factors pulling the decision in different directions</h2>
         </div>
-        <StatusPill label="expert overlay off" tone="watch" />
+        <StatusPill label={factorResearch?.coverage_status ?? "loading research"} tone="watch" />
       </div>
       <div className="force-grid">
-        {marketForces.map((force) => (
+        {factors.map((factor) => (
           <button
-            key={force.name}
+            key={factor.id}
             className="force-tile"
             onClick={() =>
               onSelect({
                 kind: "market",
-                title: force.name,
-                meta: `${force.signal} · ${force.confidence} confidence`,
-                body: force.driver
+                title: factor.label,
+                meta: `L${factor.level} · ${factor.metric_count} metric lines · ${factor.source_count} sources`,
+                body: factor.summary,
+                sources: factor.sources
               })
             }
           >
             <div className="force-header">
-              <strong>{force.name}</strong>
-              <span>{force.signal}</span>
+              <strong>{factor.label}</strong>
+              <span>L{factor.level}</span>
             </div>
-            <p>{force.driver}</p>
+            <p>{factor.summary}</p>
             <div className="force-meta">
-              <small>{force.confidence} confidence</small>
-              <small>{force.recency}</small>
+              <small>{factor.metric_count} metric lines</small>
+              <small>{factor.source_count} sources</small>
             </div>
             <div className="bar-wrap">
-              <span className="bar support" style={{ width: `${force.density}%` }} />
+              <span className="bar support" style={{ width: factorCoverageWidth(factor) }} />
             </div>
           </button>
         ))}
       </div>
+      {!factors.length && <p>Start the local API to load the factor tree fixture.</p>}
     </div>
   );
 }
 
-function EvidenceBoard({ onSelect }: { onSelect: (selection: InspectorSelection) => void }) {
+function EvidenceBoard({
+  factorResearch,
+  onSelect
+}: {
+  factorResearch: FactorResearch | null;
+  onSelect: (selection: InspectorSelection) => void;
+}) {
+  const rows = (factorResearch?.factors ?? [])
+    .flatMap((factor) =>
+      factor.top_metrics.slice(0, 3).map((metric) => ({
+        factor,
+        metric,
+        source: factor.sources[0]
+      }))
+    )
+    .slice(0, 22);
+
   return (
     <div className="stack">
       <div className="section-heading">
         <div>
           <span className="eyebrow">Evidence Board</span>
-          <h2>Claims, sources, dates, and decision impact</h2>
+          <h2>Metric lines, source links, and provenance</h2>
         </div>
         <div className="filter-row">
           <button className="selected">By factor</button>
@@ -491,38 +576,72 @@ function EvidenceBoard({ onSelect }: { onSelect: (selection: InspectorSelection)
 
       <div className="evidence-table">
         <div className="table-head">
-          <span>Source</span>
-          <span>Claim</span>
-          <span>Type</span>
-          <span>Impact</span>
-          <span>Confidence</span>
+          <span>Factor</span>
+          <span>Current data line</span>
+          <span>Level</span>
+          <span>Primary source</span>
+          <span>Links</span>
         </div>
-        {evidenceRows.map((row) => (
+        {rows.map((row) => (
           <button
-            key={`${row.source}-${row.claim}`}
+            key={`${row.factor.id}-${row.metric}`}
             className="evidence-row"
             onClick={() =>
               onSelect({
                 kind: "evidence",
-                title: row.claim,
-                meta: `${row.source} · ${row.type}`,
-                body: `${row.impact}. Date and quote fields should remain explicit; unknown dates must stay labeled instead of inferred.`
+                title: row.factor.label,
+                meta: `L${row.factor.level} · ${row.factor.provenance?.source_origin ?? "source"} · ${row.factor.query_id}`,
+                body: row.metric,
+                sources: row.factor.sources
               })
             }
           >
-            <span>{row.source}</span>
-            <strong>{row.claim}</strong>
-            <span>{row.type}</span>
-            <span>{row.impact}</span>
-            <span>{row.confidence}</span>
+            <span>{row.factor.label}</span>
+            <strong>{row.metric}</strong>
+            <span>L{row.factor.level}</span>
+            <span>{row.source?.domain ?? row.source?.label ?? "Inspect raw"}</span>
+            <span>{row.factor.source_count}</span>
           </button>
         ))}
       </div>
+      {!rows.length && <p>Start the local API to load Cala-backed metric lines.</p>}
     </div>
   );
 }
 
-function PersonalFit({ onSelect }: { onSelect: (selection: InspectorSelection) => void }) {
+function PersonalFit({
+  output,
+  profile,
+  variables,
+  onSelect
+}: {
+  output: TraceDemoOutput | null;
+  profile: PersonalProfile | null;
+  variables: PersonalVariables;
+  onSelect: (selection: InspectorSelection) => void;
+}) {
+  const fit = output?.personal_fit;
+  const inputRows = [
+    { label: "Profile", value: profile?.label ?? "No profile fixture" },
+    { label: "Purchase budget", value: eur(profileNumber(variables, "budget_eur")) },
+    { label: "Down payment", value: eur(profileNumber(variables, "down_payment_eur")) },
+    { label: "Monthly ceiling", value: eur(profileNumber(variables, "monthly_ceiling_eur")) },
+    {
+      label: "Quoted mortgage rate",
+      value:
+        typeof variables.quoted_mortgage_rate_pct === "number"
+          ? `${variables.quoted_mortgage_rate_pct}%`
+          : "needs input"
+    },
+    {
+      label: "Move deadline",
+      value:
+        typeof variables.move_deadline_months === "number"
+          ? `${variables.move_deadline_months} months`
+          : "not set"
+    }
+  ];
+
   return (
     <div className="stack">
       <div className="section-heading">
@@ -534,7 +653,7 @@ function PersonalFit({ onSelect }: { onSelect: (selection: InspectorSelection) =
 
       <section className="personal-layout">
         <div className="form-grid">
-          {personalVariables.map((variable) => (
+          {inputRows.map((variable) => (
             <button
               key={variable.label}
               className="variable-field"
@@ -542,7 +661,7 @@ function PersonalFit({ onSelect }: { onSelect: (selection: InspectorSelection) =
                 onSelect({
                   kind: "personal",
                   title: variable.label,
-                  meta: "User input",
+                  meta: "Profile fixture / user input",
                   body: `${variable.value} changes action fit and thresholds, but does not mutate public evidence.`
                 })
               }
@@ -554,11 +673,35 @@ function PersonalFit({ onSelect }: { onSelect: (selection: InspectorSelection) =
         </div>
 
         <div className="scenario-compare">
-          <h3>Scenario compare</h3>
-          <ComparisonRow label="Buy selectively now" value={68} tone="good" />
-          <ComparisonRow label="Wait 6-12 months" value={59} tone="watch" />
-          <ComparisonRow label="Expand region" value={74} tone="personal" />
-          <ComparisonRow label="Keep renting" value={51} tone="watch" />
+          <h3>Deterministic fit</h3>
+          {fit?.status === "needs_user_input" ? (
+            <p>{fit.note}</p>
+          ) : (
+            <>
+              <ComparisonRow
+                label="Monthly payment"
+                value={eur(fit?.inputs?.monthly_payment_eur)}
+                tone="watch"
+              />
+              <ComparisonRow
+                label="Affordability buffer"
+                value={`${eur(fit?.affordability_buffer?.eur_per_month)}/mo`}
+                tone={fit?.affordability_buffer?.status === "negative" ? "risk" : "good"}
+              />
+              <ComparisonRow
+                label="+100bps rate shock"
+                value={`${eur(fit?.rate_exposure?.per_plus_100bps_eur)}/mo`}
+                tone="watch"
+              />
+              <ComparisonRow
+                label="Wait-cost range"
+                value={`${eur(fit?.opportunity_cost_of_waiting?.low_eur)} to ${eur(
+                  fit?.opportunity_cost_of_waiting?.high_eur
+                )}`}
+                tone="personal"
+              />
+            </>
+          )}
         </div>
       </section>
     </div>
@@ -571,15 +714,12 @@ function ComparisonRow({
   tone
 }: {
   label: string;
-  value: number;
-  tone: "good" | "watch" | "personal";
+  value: string;
+  tone: "good" | "watch" | "personal" | "risk";
 }) {
   return (
     <div className="comparison-row">
       <span>{label}</span>
-      <div className="bar-wrap">
-        <span className={`bar ${tone}`} style={{ width: `${value}%` }} />
-      </div>
       <strong>{value}</strong>
     </div>
   );
@@ -684,6 +824,25 @@ function Inspector({
       <h2>{selection.title}</h2>
       <p className="inspector-meta">{selection.meta}</p>
       <p>{selection.body}</p>
+
+      {selection.sources?.length ? (
+        <div className="inspector-section">
+          <h3>Sources</h3>
+          <ul className="source-list">
+            {selection.sources.slice(0, 5).map((source) => (
+              <li key={`${source.context_id ?? source.url ?? source.label}`}>
+                {source.url ? (
+                  <a href={source.url} target="_blank" rel="noreferrer">
+                    {source.domain ?? source.label}
+                  </a>
+                ) : (
+                  <span>{source.label}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="inspector-section">
         <h3>Claim resolution</h3>
