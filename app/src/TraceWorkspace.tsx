@@ -7,19 +7,21 @@
 // ROUGH DEFAULT — structure + interactions wired to existing data; each region is
 // a small component below so we can iterate on them one at a time.
 // ============================================================================
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fetchFactorTree, runDefaultTier } from "./api";
 import CanvasGraph from "./trace/CanvasGraph";
 import {
   K, CAT_COLOR, SCENARIOS, INDICATORS, NET_READ, FALLBACK_FACTORS, FALLBACK_EDGES,
   conditionDistribution, factorWeights, adaptFactorTree, personalLayer, personalAdvice, fmtVar, PERSONAL_VARS,
+  decisionDistribution,
   CW, CH, VBW, VBH, nodeSize,
-  type CanvasFactor, type CanvasEdge, type Vars, type Category, type VarKey, type PersonalVarDef, type FactorGroup,
+  type CanvasFactor, type CanvasEdge, type Vars, type Category, type VarKey, type PersonalVarDef, type FactorGroup, type DecisionRead,
 } from "./trace/model";
 
 const mono = "'JetBrains Mono', monospace", sans = "'Instrument Sans', sans-serif", serif = "'Fraunces', serif";
 const editorial = "'Newsreader', 'Fraunces', serif";
 const SCEN_LABEL = Object.fromEntries(SCENARIOS.map(([id, l]) => [id, l]));
+const OVERVIEW_K = 0.46;
 
 type ProtocolRun = {
   support?: Record<string, number>;
@@ -51,12 +53,13 @@ export default function TraceWorkspace() {
   const [picker, setPicker] = useState(false);
   const [running, setRunning] = useState(false);
   const [rightOn, setRightOn] = useState(true);   // floating right panel (info display)
-  const [dockOn, setDockOn] = useState(true);     // floating bottom dock (indicators)
+  const [dockOn, setDockOn] = useState(true);     // floating bottom dock (indicators / outcome)
+  const [dockView, setDockView] = useState<"indicators" | "outcome">("outcome");   // outcome is the default dock view
   const [isFs, setIsFs] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [groupFocus, setGroupFocus] = useState<FactorGroup | null>(null);   // a focused lane (click its background)
-  const [cam, setCam] = useState({ x: 40, y: 20, k: 0.46 });   // default fits the taller gridded graph
+  const [cam, setCam] = useState({ x: 40, y: 20, k: OVERVIEW_K });   // default overview scale
   const [protocolRun, setProtocolRun] = useState<ProtocolRun | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -107,29 +110,19 @@ export default function TraceWorkspace() {
   const personal = personalLayer(activeVars, vars);
   const advice = personalAdvice(applied, appliedActive, dist.w);
 
-  // The scenario READ (conclusions) renders as ON-CANVAS cards — same component as
-  // the causal factor cards — in a conclusions column to the right of the measured
-  // price outcome. NOT a separate side panel. Grounded in the engine distribution.
-  const scenCat: Record<string, Category> = { shortage_dominates: "supply", financing_pressure: "financing", investor_window: "policy", regional_divergence: "regional", user_constraint: "personal" };
+  // The canvas is the causal graph ONLY (input factors + their structure). The
+  // outcome — scenario READ + buy/wait/rent DECISION — lives in the bottom dock
+  // (switchable with the indicators view), not on the canvas.
   const outcomeF = factors.find((f) => f.role === "outcome" || f.category === "outcome");
   const ranked = SCENARIOS.map(([id, label]) => ({ id, label, w: dist.w[id] ?? 0 })).sort((a, b) => b.w - a.w);
-  const CONC_X = 2288;   // conclusions column = OUT(2002) + one column pitch (286)
-  const conclNodes: CanvasFactor[] = ranked.map((s, i) => ({
-    id: `read_${s.id}`, label: s.label, category: scenCat[s.id] ?? "outcome", role: "outcome",
-    value: `${Math.round(s.w * 100)}% likely`, trend: SCEN_META[s.id]?.dir === "up" ? "↑" : SCEN_META[s.id]?.dir === "down" ? "↓" : "→",
-    evidenceCount: displayFactors.filter((f) => (f.support?.[s.id] ?? 0) > 0).length,
-    credibility: "primary", contested: false, weightReady: true, mechanism: SCEN_META[s.id]?.note,
-    support: { [s.id]: 1 }, x: CONC_X, y: 838 + i * 130,
-  }));
-  const conclEdges: CanvasEdge[] = outcomeF
-    ? ranked.map((s) => ({ from: outcomeF.id, to: `read_${s.id}`, strength: 0.35 + s.w * 0.55, sign: 1 as const, relation: "causal" as const }))
-    : [];
-  const leadReadId = ranked.length ? `read_${ranked[0].id}` : undefined;
-  const allFactors = [...displayFactors, ...conclNodes];
-  const allEdges = [...edges, ...conclEdges];
-  const allWeights = { ...weights, ...Object.fromEntries(ranked.map((s) => [`read_${s.id}`, s.w])) };
+  const decision = decisionDistribution(applied, appliedActive, dist.w, dist.br);
+  const leadId = outcomeF?.id;   // highlight the terminal outcome node of the causal graph
+  const allFactors = displayFactors;
+  const allEdges = edges;
+  const allWeights = weights;
   const panelsOn = rightOn || dockOn;
   const togglePanels = () => { const v = !(rightOn || dockOn); setRightOn(v); setDockOn(v); };
+  const dockH = dockOn ? 176 : 20;   // full-width dock height; the inspector bottom meets the dock top
   const selFactor = sel ? allFactors.find((f) => f.id === sel) || null : null;
   const selPersonal = sel?.startsWith("pv_") ? PERSONAL_VARS.find((d) => `pv_${d.id}` === sel) || null : null;
   const dirty = JSON.stringify(activeVars.slice().sort()) !== JSON.stringify(appliedActive.slice().sort())
@@ -139,13 +132,17 @@ export default function TraceWorkspace() {
   const fitView = () => {
     const boxes = [
       ...allFactors.map((f) => ({ x: f.x, y: f.y, ...nodeSize(f) })),
-      ...personal.nodes.map((n) => ({ x: n.x, y: n.y, w: 120, h: 46 })),
+      ...personal.nodes.map((n) => ({ x: n.x, y: n.y, w: 146, h: 54 })),
     ];
     if (!boxes.length) return;
     const minX = Math.min(...boxes.map((b) => b.x)), minY = Math.min(...boxes.map((b) => b.y));
     const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
     const pad = 48, cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY);
-    const k = Math.max(0.45, Math.min(2.6, Math.min((VBW - 2 * pad) / cw, (VBH - 2 * pad) / ch)));
+    // Fit the whole content, but never zoom out past the scale where node text stays
+    // legible — if it can't all fit at that scale, frame it centered (pan to browse).
+    const LEGIBLE_K = 0.72;
+    const fitK = Math.min((VBW - 2 * pad) / cw, (VBH - 2 * pad) / ch);
+    const k = Math.min(2.6, Math.max(LEGIBLE_K, fitK));
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
     setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
   };
@@ -169,25 +166,22 @@ export default function TraceWorkspace() {
     const driver = allFactors.find((f) => f.id === "personal_decision_subdrivers");
     const xs = [...ns.map((n) => n.x), ...(driver ? [driver.x] : [])];
     const ys = [...ns.map((n) => n.y), ...(driver ? [driver.y] : [])];
-    const xe = [...ns.map((n) => n.x + 180), ...(driver ? [driver.x + CW] : [])];
-    const ye = [...ns.map((n) => n.y + 90), ...(driver ? [driver.y + CH] : [])];
+    const driverSize = driver ? nodeSize(driver) : null;
+    const xe = [...ns.map((n) => n.x + 146), ...(driver && driverSize ? [driver.x + driverSize.w] : [])];
+    const ye = [...ns.map((n) => n.y + 54), ...(driver && driverSize ? [driver.y + driverSize.h] : [])];
     setSel("personal_decision_subdrivers");   // light up the personal area, dim the rest
     setHover(null);
     frameRect(Math.min(...xs) - 40, Math.min(...ys) - 50, Math.max(...xe) + 40, Math.max(...ye) + 50, 1.15);
   };
-  // jump to the OUTCOME read column (the ranked reads + your-call advice).
-  const focusOutcome = () => frameRect(2002, 760, 2760, 1500, 1.0);
-  // DEFAULT view: keep node text at its most-legible size (font-size baseline), centered
-  // on the graph; edges may overflow - pan to browse. This is the home view.
+  // DEFAULT view: horizontal reasoning overview, centered at the current overview scale.
   const defaultView = () => {
     const ns = factors.length ? factors : allFactors;
     if (!ns.length) return;
-    const minX = Math.min(...ns.map((f) => f.x)), minY = Math.min(...ns.map((f) => f.y));
-    const maxX = Math.max(...ns.map((f) => f.x + CW)), maxY = Math.max(...ns.map((f) => f.y + CH));
+    const boxes = ns.map((f) => ({ x: f.x, y: f.y, ...nodeSize(f) }));
+    const minX = Math.min(...boxes.map((b) => b.x)), minY = Math.min(...boxes.map((b) => b.y));
+    const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    const fitScale = rect ? Math.min(rect.width / VBW, rect.height / VBH) : 1;
-    const k = Math.max(0.6, Math.min(1.8, 14.5 / (13 * fitScale)));
+    const k = OVERVIEW_K;
     setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
   };
   const focusComponent = (id: string) => {
@@ -224,6 +218,16 @@ export default function TraceWorkspace() {
   };
   // click a lane background → focus the whole group (toggle); clears any node selection.
   const focusGroup = (g: FactorGroup) => { setGroupFocus((prev) => (prev === g ? null : g)); setSel(null); setHover(null); };
+  // click a legend item → focus that group AND frame/zoom to its area.
+  const focusGroupArea = (g: FactorGroup) => {
+    setGroupFocus(g); setSel(null); setHover(null);
+    const extra = g === "personal" ? personal.nodes.map((n) => ({ x: n.x, y: n.y, w: 146, h: 54 })) : [];
+    const boxes = [...allFactors.filter((f) => f.group === g).map((f) => ({ x: f.x, y: f.y, ...nodeSize(f) })), ...extra];
+    if (!boxes.length) return;
+    const minX = Math.min(...boxes.map((b) => b.x)), minY = Math.min(...boxes.map((b) => b.y));
+    const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
+    frameRect(minX - 36, minY - 48, maxX + 36, maxY + 48, 1.25);
+  };
 
   useEffect(() => {
     const onEsc = (event: KeyboardEvent) => {
@@ -247,7 +251,8 @@ export default function TraceWorkspace() {
       setProtocolRun(res as ProtocolRun);
       setApplied(vars);
       setAppliedActive(activeVars);
-      focusOutcome();   // demo: jump to the outcome read so the advice is front-and-center
+      setDockView("outcome");   // pop the outcome (read + decision) in the dock after a run
+      setDockOn(true);
     } finally {
       setRunning(false);
     }
@@ -269,8 +274,9 @@ export default function TraceWorkspace() {
     document.addEventListener("fullscreenchange", fn);
     return () => document.removeEventListener("fullscreenchange", fn);
   }, []);
-  // settle to the default home view once the factor tree first arrives.
-  useEffect(() => {
+  // settle to the default home view once the factor tree first arrives. useLayoutEffect so
+  // the FIRST painted frame is already centered at OVERVIEW_K — no left-aligned flash/jump.
+  useLayoutEffect(() => {
     if (factors.length && !prevActive.current) { defaultView(); prevActive.current = 1; }
   }, [factors.length]);
 
@@ -282,18 +288,18 @@ export default function TraceWorkspace() {
       <div ref={bodyRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {/* ---- canvas - FULL viewport width ---- */}
         <div ref={canvasRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: K.paper }}>
-          <CanvasGraph factors={allFactors} edges={allEdges} weights={allWeights} lead={leadReadId} personal={personal} sel={sel} hover={hover}
+          <CanvasGraph factors={allFactors} edges={allEdges} weights={allWeights} lead={leadId} personal={personal} sel={sel} hover={hover}
             groupFocus={groupFocus} onSelectGroup={focusGroup}
-            cam={cam} setCam={setCam} onHover={setHover} onSelect={focusComponent} onMove={moveFactor} />
+            cam={cam} setCam={setCam} onHover={setHover} onSelect={focusComponent} onClearFocus={exitFocus} onMove={moveFactor} />
           <NavRail onZoom={zoom} onFit={fitView} k={cam.k} />
-          <LegendBar />
+          <LegendBar onFocusGroup={focusGroupArea} />
         </div>
         {/* ---- Inputs & inspector - right panel over the canvas, closable ---- */}
         {rightOn ? (
-          <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, display: "flex", flexDirection: "column", zIndex: 8 }}>
+          <div style={{ position: "absolute", top: 0, right: 0, bottom: dockH, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, display: "flex", flexDirection: "column", zIndex: 8 }}>
             <style>{`.trace-scroll{scrollbar-width:thin;scrollbar-color:rgba(122,106,84,.22) transparent}.trace-scroll::-webkit-scrollbar{width:5px;height:5px}.trace-scroll::-webkit-scrollbar-track{background:transparent;border:none}.trace-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.trace-scroll::-webkit-scrollbar-thumb{background:rgba(122,106,84,.2);border-radius:99px}.trace-scroll:hover::-webkit-scrollbar-thumb{background:rgba(122,106,84,.4)}.trace-scroll::-webkit-scrollbar-corner{background:transparent}`}</style>
             {/* INPUTS — primary controls, on top (no redundant label; ADD A VARIABLE self-explains) */}
-            <div className="trace-scroll" style={{ flexShrink: 0, padding: "16px 12px 13px", display: "flex", flexDirection: "column", gap: 10, maxHeight: "56%", overflowY: "auto" }}>
+            <div className="trace-scroll" style={{ flexShrink: 0, padding: 12, display: "flex", flexDirection: "column", gap: 10, maxHeight: "56%", overflowY: "auto" }}>
               <AddVariablesCTA onPick={() => setPicker(true)} />
               {activeVars.length > 0 && (
                 <YourVariables active={activeVars} vars={vars} setVars={setVars} onManage={() => setPicker(true)}
@@ -303,7 +309,7 @@ export default function TraceWorkspace() {
             {/* INSPECTOR — light section header (matches the other labels) + detail, BELOW the inputs */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexShrink: 0, padding: "9px 12px 8px", borderTop: `1px solid ${K.rule}`, borderBottom: `1px solid ${K.ruleSoft}` }}>
               <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selPersonal ? `Inspector · ${selPersonal.label}` : selFactor ? `Inspector · ${selFactor.label}` : "Inspector"}</span>
-              {sel && <button onClick={exitFocus} title="Exit focused component (Esc)" style={{ flexShrink: 0, border: `1px solid ${K.rule}`, background: K.paperDeep, color: K.inkSoft, cursor: "pointer", fontFamily: mono, fontSize: 8, letterSpacing: 0.8, textTransform: "uppercase", padding: "2px 6px", borderRadius: 2 }}>Esc · graph</button>}
+              {(sel || groupFocus) && <button onClick={exitFocus} title="Back to the full graph (Esc)" style={{ flexShrink: 0, border: `1px solid ${K.rule}`, background: K.paperDeep, color: K.inkSoft, cursor: "pointer", fontFamily: mono, fontSize: 8, letterSpacing: 0.8, textTransform: "uppercase", padding: "2px 6px", borderRadius: 2 }}>Esc · graph</button>}
             </div>
             <div className="trace-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", padding: "4px 12px 14px" }}>
               {selPersonal ? <PersonalDetail d={selPersonal} vars={vars} active={activeVars.includes(selPersonal.id)} onAdd={() => setActiveVars((a) => a.includes(selPersonal.id) ? a : [...a, selPersonal.id])} />
@@ -312,20 +318,48 @@ export default function TraceWorkspace() {
                     ? <ProtocolDetail />
                     : <NodeInvestigation f={selFactor} weight={allWeights[selFactor.id] ?? 0} />
                 )
-                : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 28px" }}><Empty text="Click a factor (or one of your private variables) on the canvas to inspect it." /></div>}
+                : <div style={{ flex: 1, minHeight: 0, border: `1px dashed ${K.rule}`, borderRadius: 3, background: "rgba(122,106,84,.05)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 24px" }}><Empty text="Click a factor (or one of your private variables) on the canvas to inspect it." /></div>}
             </div>
           </div>
         ) : (
           <button onClick={() => setRightOn(true)} title="Show inputs & inspector"
-            style={{ position: "absolute", top: 10, right: 10, zIndex: 8, ...iconBtn(false) }}>◧</button>
+            style={{ position: "absolute", top: 0, bottom: dockH, right: 0, width: 22, zIndex: 8, borderLeft: `1px solid ${K.rule}`, borderTop: "none", borderRight: "none", borderBottom: "none", background: K.paperDeep, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: K.inkSoft }}>
+            <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>＋ Inputs &amp; inspector</span>
+          </button>
+        )}
+        {/* ---- outcome / indicators dock — OVERLAY over the canvas bottom. The tab row is
+             fully transparent (reveals canvas/components behind, no occlusion); the body
+             fades from transparent into solid paper. ---- */}
+        {dockOn ? (
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 9, display: "flex", flexDirection: "column", background: K.paper, borderTop: `1px solid ${K.rule}` }}>
+            {/* body — FIXED height, solid paper */}
+            <div className="trace-scroll" style={{ height: 162, overflowY: "auto", overflowX: "hidden", background: K.paper }}>
+              {dockView === "indicators"
+                ? <BottomDock dist={dist} embedded />
+                : <OutcomeDock ranked={ranked} decision={decision} advice={advice} dirty={dirty} hasVars={activeVars.length > 0} />}
+            </div>
+            {/* bottom bar — tabs (left) · cala provenance (center) · collapse (right) */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderTop: `1px solid ${K.ruleSoft}`, padding: "0 10px", background: K.paper }}>
+              <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                {([["outcome", "Outcome · your decision"], ["indicators", "Indicators to watch"]] as const).map(([v, label]) => {
+                  const on = dockView === v;
+                  return (
+                    <button key={v} onClick={() => setDockView(v)}
+                      style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 0.7, textTransform: "uppercase", padding: "7px 9px", marginTop: -1, border: "none", borderTop: `2px solid ${on ? K.primary : "transparent"}`, background: "none", color: on ? K.ink : K.inkMute, fontWeight: on ? 600 : 400, cursor: "pointer" }}>
+                      {label}{v === "outcome" && dirty ? " *" : ""}
+                    </button>
+                  );
+                })}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}><CalaFooter /></span>
+              <button onClick={() => setDockOn(false)} title="Collapse dock" style={{ flexShrink: 0, border: "none", background: "none", color: K.inkMute, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "4px 4px" }}>▾</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setDockOn(true)} title="Show the outcome / indicators dock"
+            style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 9, height: 20, border: "none", background: K.paperDeep, cursor: "pointer", fontFamily: mono, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: K.inkSoft }}>＋ Outcome · your decision &nbsp;·&nbsp; Indicators to watch</button>
         )}
       </div>
-      {dockOn ? (
-        <BottomDock dist={dist} />
-      ) : (
-        <button onClick={() => setDockOn(true)} title="Show indicators to watch"
-          style={{ flexShrink: 0, height: 20, borderTop: `1px solid ${K.rule}`, background: K.paperDeep, cursor: "pointer", fontFamily: mono, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: K.inkSoft }}>＋ Indicators to watch</button>
-      )}
       {picker && <VariablePicker initial={activeVars} vars={vars} setVars={setVars} onClose={() => setPicker(false)}
         onConfirm={(keys) => { setActiveVars(keys); setPicker(false); focusPersonalFor(keys); }} />}
     </div>
@@ -433,7 +467,7 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
         <div style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 0.5, textTransform: "uppercase", color: K.inkMute, marginTop: 2 }}>a decision-intelligence cockpit</div>
       </div>
       {/* divider */}
-      <div style={{ width: 1, height: 32, background: K.rule, flexShrink: 0 }} />
+      <div style={{ width: 1, height: 32, background: K.rule, flexShrink: 0, transform: "scaleX(0.5)" }} />
       {/* topic — input-style field; focus stretches it edge-to-edge + suggests other contested topics */}
       <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0, position: "relative" }}>
         <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={() => setEditing(true)}
@@ -452,9 +486,10 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
         </div>
         {editing && (
           <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: K.paper, border: `1px solid ${K.rule}`, borderRadius: 4, boxShadow: "0 14px 32px rgba(0,0,0,.18)", padding: "5px 0", zIndex: 50, maxHeight: 420, overflowY: "auto" }}>
-            {/* ── current shared understanding of THIS graph + who built it ── */}
-            <div style={{ margin: "3px 8px 6px", padding: "10px 12px", background: K.paperDeep, borderRadius: 5 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            {/* ── current shared understanding of THIS graph — plain label + contributors
+                 (no fill box; matches the Other-topics section), then a one-line read ── */}
+            <div style={{ padding: "5px 14px 8px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
                 <span style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Current understanding · this graph</span>
                 {/* overlapping contributor avatars → fake profile pages */}
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -463,32 +498,18 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
                       <button key={c.name} title={`${c.name} · open profile`} onMouseDown={(e) => e.preventDefault()} onClick={() => setProfile(c)}
                         onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.zIndex = "2"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.zIndex = "1"; }}
-                        style={{ marginLeft: i ? -6 : 0, padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "50%", boxShadow: `0 0 0 1.5px ${K.paperDeep}`, position: "relative", zIndex: 1, transition: "transform .12s" }}>
-                        <Avatar init={c.init} color={c.color} size={17} />
+                        style={{ marginLeft: i ? -6 : 0, padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "50%", boxShadow: `0 0 0 1.5px ${K.paper}`, position: "relative", zIndex: 1, transition: "transform .12s" }}>
+                        <Avatar init={c.init} color={c.color} size={16} />
                       </button>
                     ))}
                   </span>
                   <span style={{ fontFamily: mono, fontSize: 7.5, color: K.inkMute }}>{CONTRIBUTORS.length} contributors</span>
                 </span>
               </div>
-              {/* core conclusion — direction chip + the read, highlighted as ONE region
-                  (warm rust tint + rust rail) to raise contrast while staying in tone.
-                  Chip reverted to its outline state. */}
-              <div style={{ background: "rgba(90,110,72,.13)", borderRadius: 4, padding: "8px 8px 10px", marginBottom: 10 }}>
-                <span style={{ display: "inline-block", fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: K.good, border: `1px solid ${K.good}`, borderRadius: 3, padding: "1px 6px", marginBottom: 6 }}>{GRAPH_READ.dirChip}</span>
-                <div style={{ fontFamily: editorial, fontStyle: "italic", fontWeight: 600, fontSize: 16.5, color: K.ink, lineHeight: 1.25 }}>{GRAPH_READ.title}</div>
-              </div>
-              {/* insights — larger, each with its data/direction justified to the right */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {GRAPH_READ.insights.map((ins) => (
-                  <div key={ins.text} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-                    <span style={{ display: "flex", gap: 7, fontSize: 13.5, color: K.inkSoft, lineHeight: 1.3, minWidth: 0 }}>
-                      <span style={{ flexShrink: 0, marginTop: 6, width: 4, height: 4, borderRadius: 2, background: K.good }} />
-                      <span>{ins.text}</span>
-                    </span>
-                    <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: ins.dir === "up" ? K.good : ins.dir === "down" ? K.primary : K.meta, whiteSpace: "nowrap", flexShrink: 0 }}>{ins.dir === "up" ? "\u2191" : ins.dir === "down" ? "\u2193" : ""} {ins.val}</span>
-                  </div>
-                ))}
+              {/* one-line read — direction chip + headline, no fill box */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ flexShrink: 0, alignSelf: "center", fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: K.good, border: `1px solid ${K.good}`, borderRadius: 3, padding: "1px 6px" }}>{GRAPH_READ.dirChip}</span>
+                <span style={{ fontFamily: editorial, fontStyle: "italic", fontWeight: 600, fontSize: 14, color: K.ink, lineHeight: 1.25 }}>{GRAPH_READ.title}</span>
               </div>
             </div>
             <div style={{ height: 1, background: K.ruleSoft, margin: "0 14px 4px" }} />
@@ -512,7 +533,7 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
         )}
       </div>
       {/* divider — symmetric to the logo divider */}
-      <div style={{ width: 1, height: 32, background: K.rule, flexShrink: 0 }} />
+      <div style={{ width: 1, height: 32, background: K.rule, flexShrink: 0, transform: "scaleX(0.5)" }} />
       {/* engine · view toggles · run (far right) */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         <span title="Engine status" style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: mono, fontSize: 8.5, letterSpacing: 0.5, textTransform: "uppercase", color: K.inkSoft, whiteSpace: "nowrap", marginRight: 2 }}>
@@ -522,9 +543,9 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
           <button onClick={onTogglePanels} title={panelsOn ? "Hide side panels" : "Show side panels"} style={iconBtn(!panelsOn)}>{panelsOn ? "◨" : "▭"}</button>
           <button onClick={onFullscreen} title={isFs ? "Exit full screen" : "Full-screen the graph"} style={iconBtn(isFs)}>{isFs ? "⤡" : "⛶"}</button>
         </div>
-        <button onClick={onRun} disabled={running} title="Run the Trace core protocol over your edited variables"
-          style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: mono, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", border: "none", borderRadius: 2, padding: "8px 15px", cursor: running ? "default" : "pointer", color: K.paper, background: running ? K.meta : dirty ? K.primary : K.secondary, transition: "background .2s", position: "relative", whiteSpace: "nowrap" }}>
-          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: running ? 8 : 0, background: K.paper, clipPath: running ? undefined : "polygon(0 0, 100% 50%, 0 100%)", animation: running ? "tracePulse 0.8s infinite" : undefined }} />
+        <button onClick={onRun} disabled={running || !dirty} title={dirty ? "Run the Trace core protocol over your edited variables" : "Add or change a private variable first"}
+          style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: mono, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", border: "none", borderRadius: 2, padding: "8px 15px", cursor: running || !dirty ? "default" : "pointer", color: running || dirty ? K.paper : K.inkMute, background: running ? K.meta : dirty ? K.primary : K.rule, transition: "background .2s, color .2s", position: "relative", whiteSpace: "nowrap" }}>
+          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: running ? 8 : 0, background: running || dirty ? K.paper : K.inkMute, clipPath: running ? undefined : "polygon(0 0, 100% 50%, 0 100%)", animation: running ? "tracePulse 0.8s infinite" : undefined }} />
           {running ? "Running…" : "Run protocol"}
           {dirty && !running && <span style={{ position: "absolute", top: -3, right: -3, width: 7, height: 7, borderRadius: 7, background: K.warn, border: `1.5px solid ${K.paper}` }} />}
         </button>
@@ -564,11 +585,26 @@ function NavRail({ onZoom, onFit, k }: { onZoom: (f: number) => void; onFit: () 
 }
 
 // ---- LegendBar (left of canvas, vertical; order mirrors the lane stack top→bottom) --
-function LegendBar() {
-  const items: Array<[string, string]> = [["financing", K.secondary], ["demand", K.secondarySoft], ["supply", K.meta], ["policy", K.warn], ["regional", "#6D7162"], ["private", K.good], ["outcome", K.primary]];
+// Each item maps a category swatch to a lane group; hover lifts it, click focuses + frames that area.
+function LegendBar({ onFocusGroup }: { onFocusGroup?: (g: FactorGroup) => void }) {
+  const [hov, setHov] = useState<string | null>(null);
+  const items: Array<[string, string, FactorGroup]> = [
+    ["financing", K.secondary, "affordability"], ["demand", K.secondarySoft, "macro_demand"],
+    ["supply", K.meta, "supply_side"], ["policy", K.warn, "policy_supply"],
+    ["regional", "#6D7162", "regional"], ["private", K.good, "personal"],
+  ];
   return (
-    <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 9, background: "rgba(250,248,243,.5)", borderRadius: 3, padding: "11px 13px", zIndex: 5 }}>
-      {items.map(([l, c]) => <span key={l} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 9.5, color: K.inkSoft }}><span style={{ width: 9, height: 9, borderRadius: 1, background: c, flexShrink: 0 }} />{l}</span>)}
+    <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 3, background: "rgba(250,248,243,.5)", borderRadius: 3, padding: "8px 8px", zIndex: 5 }}>
+      {items.map(([l, c, g]) => {
+        const on = hov === l;
+        return (
+          <button key={l} onClick={() => onFocusGroup?.(g)} onMouseEnter={() => setHov(l)} onMouseLeave={() => setHov(null)}
+            title={`Focus the ${l} area`}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 9.5, color: on ? K.ink : K.inkSoft, border: "none", background: on ? "rgba(122,106,84,.1)" : "transparent", borderRadius: 3, padding: "3px 6px", cursor: "pointer", transition: "background .12s, color .12s, transform .12s", transform: on ? "translateX(2px)" : "none" }}>
+            <span style={{ width: 9, height: 9, borderRadius: 1, background: c, flexShrink: 0, boxShadow: on ? `0 0 0 2px rgba(250,248,243,.9), 0 0 0 3px ${c}` : "none", transition: "box-shadow .12s" }} />{l}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -968,7 +1004,12 @@ function ProtocolDetail() {
         <MetaChip text="auditable" />
         <MetaChip text="provenance-bearing" />
       </div>
-      <div style={{ fontSize: 11.5, color: K.inkSoft, lineHeight: 1.45, margin: "9px 0 0" }}>
+      <a href="https://x.com/traceintelli" target="_blank" rel="noopener"
+        style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 10, fontFamily: mono, fontSize: 10.5, fontWeight: 600, letterSpacing: 0.3, color: K.paper, background: K.secondary, textDecoration: "none", borderRadius: 3, padding: "7px 11px", alignSelf: "flex-start" }}>
+        <span style={{ fontFamily: serif, fontSize: 13, lineHeight: 1, fontWeight: 700 }}>𝕏</span>
+        Follow @traceintelli ↗
+      </a>
+      <div style={{ fontSize: 11.5, color: K.inkSoft, lineHeight: 1.45, margin: "11px 0 0" }}>
         The causal-reasoning layer behind every read on this canvas. It turns sourced evidence and expert structure into an auditable, repeatable distribution — a read you can trace, not a narrative that was generated. The same inputs always produce the same answer.
       </div>
       <div style={sec}>How it works</div>
@@ -1075,7 +1116,81 @@ function CalaMark({ height = 15 }: { height?: number }) {
   return <img src="/cala_logo.png" alt="cala" style={{ height, width: "auto", display: "block" }} />;
 }
 
-function BottomDock({ dist }: { dist: { w: Record<string, number> } }) {
+// ---- OutcomeDock (the read + decision, shown in the bottom dock) ------------
+// Left: current understanding (net read + ranked scenarios). Right: the private
+// buy/wait/rent decision + recommendation. Pops up in the dock after a run.
+function OutcomeDock({ ranked, decision, advice, dirty, hasVars }: {
+  ranked: Array<{ id: string; label: string; w: number }>;
+  decision: DecisionRead | null;
+  advice: { headline: string; body: string } | null;
+  dirty: boolean; hasVars: boolean;
+}) {
+  const tiny = { fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase" as const, color: K.meta };
+  const confColor = decision?.confidence === "high" ? K.good : decision?.confidence === "medium" ? K.warn : K.inkMute;
+  return (
+    <div style={{ display: "flex", gap: 16, padding: "10px 16px 12px", height: "100%", boxSizing: "border-box", alignItems: "stretch" }}>
+      {/* current understanding — the shared narrative read of this graph */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={tiny}>Current understanding · this graph</div>
+        <div style={{ fontFamily: editorial, fontStyle: "italic", fontWeight: 600, fontSize: 15, color: K.ink, lineHeight: 1.25 }}>{GRAPH_READ.title}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 1 }}>
+          {GRAPH_READ.insights.map((ins) => (
+            <div key={ins.text} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ display: "flex", gap: 7, fontSize: 11, color: K.inkSoft, lineHeight: 1.35, minWidth: 0 }}>
+                <span style={{ flexShrink: 0, marginTop: 5, width: 4, height: 4, borderRadius: 2, background: K.good }} />
+                <span>{ins.text}</span>
+              </span>
+              <span style={{ fontFamily: mono, fontSize: 10, fontWeight: 600, color: ins.dir === "up" ? K.good : ins.dir === "down" ? K.primary : K.meta, whiteSpace: "nowrap", flexShrink: 0 }}>{ins.dir === "up" ? "↑" : ins.dir === "down" ? "↓" : ""} {ins.val}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ width: 1, background: K.rule, flexShrink: 0, alignSelf: "stretch", transform: "scaleX(0.5)" }} />
+      {/* your decision — private; default shows the scenario read distribution, then buy/wait/rent after a run */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ ...tiny, color: K.good, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: "#F0F3EC", border: `1.3px dashed ${K.good}` }} />Your decision · private</span>
+          {dirty && <span style={{ color: K.warn }}>stale · run</span>}
+        </div>
+        {decision ? (<>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: mono, fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: K.paper, background: K.primary, borderRadius: 3, padding: "3px 8px", whiteSpace: "nowrap", opacity: dirty ? 0.55 : 1 }}>▶ {decision.top}</span>
+            <span style={{ fontFamily: editorial, fontStyle: "italic", fontWeight: 500, fontSize: 13, color: K.ink }}>{advice?.headline ?? decision.topLabel}</span>
+            <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: confColor }}>· {decision.confidence} confidence</span>
+          </div>
+          {decision.actions.map((a, i) => {
+            const rec = i === 0;
+            return (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, opacity: dirty ? 0.6 : 1 }}>
+                <span style={{ fontSize: 10.5, fontWeight: rec ? 600 : 400, color: rec ? K.ink : K.inkSoft, width: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.label}</span>
+                <span style={{ flex: 1, height: 6, background: K.paperDeep, borderRadius: 3, overflow: "hidden" }}><span style={{ display: "block", height: "100%", width: `${Math.round(a.fit * 100)}%`, background: rec ? K.primary : K.good }} /></span>
+                <span style={{ fontFamily: mono, fontSize: 9, color: rec ? K.primary : K.inkMute, width: 38, textAlign: "right" }}>{Math.round(a.fit * 100)}% fit</span>
+              </div>
+            );
+          })}
+          {advice?.body && <div style={{ marginTop: 2 }}><span style={{ fontSize: 10.5, color: K.ink, lineHeight: 1.7, background: "rgba(184,144,46,.26)", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone", padding: "1px 5px", borderRadius: 2 }}>{advice.body}</span></div>}
+        </>) : (<>
+          {/* default: the call-to-action on top — gray dashed box matching the inspector empty
+              state — then the scenario read distribution underneath, compact, to leave room. */}
+          <div style={{ border: `1px dashed ${K.rule}`, borderRadius: 3, background: "rgba(122,106,84,.05)", padding: "8px 11px", fontFamily: mono, fontSize: 9.5, color: K.inkSoft, lineHeight: 1.5 }}>
+            {hasVars ? "Run protocol — turn this read into your buy / wait / rent call." : "Add your private variables (top-right), then run protocol — for your buy / wait / rent call."}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {ranked.map((s) => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 9.5, color: K.inkSoft, width: 116, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{SCEN_LABEL[s.id] || s.label}</span>
+                <span style={{ flex: 1, height: 5, background: K.paperDeep, borderRadius: 3, overflow: "hidden" }}><span style={{ display: "block", height: "100%", width: `${Math.round(s.w * 100)}%`, background: SCEN_META[s.id]?.color ?? K.secondary }} /></span>
+                <span style={{ fontFamily: mono, fontSize: 8.5, color: K.inkMute, width: 28, textAlign: "right" }}>{Math.round(s.w * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+function BottomDock({ dist, embedded }: { dist: { w: Record<string, number> }; embedded?: boolean }) {
   const [hoverInd, setHoverInd] = useState<string | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; left: number } | null>(null);
@@ -1097,10 +1212,10 @@ function BottomDock({ dist }: { dist: { w: Record<string, number> } }) {
     return <div key={s.id} title={`${s.label}: ${Math.round((s.w / fbTotal) * 100)}% of the up/down read`} style={{ width: `${(s.w / fbTotal) * 100}%`, background: color, opacity: related ? 1 : 0.28, borderRight: `1px solid ${K.paper}`, transition: "opacity .15s" }} />;
   };
   return (
-    <div style={{ flexShrink: 0, borderTop: `1px solid ${K.rule}`, padding: "7px 16px 8px", background: K.paper }}>
-      {/* ── header: indicators to watch · force balance (merged one line) ── */}
+    <div style={{ flexShrink: 0, borderTop: embedded ? "none" : `1px solid ${K.rule}`, padding: embedded ? "11px 16px 8px" : "11px 16px 8px", background: embedded ? "transparent" : K.paper }}>
+      {/* ── header: force balance (the section title is the dock tab when embedded) ── */}
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
-        <span style={tiny}>Indicators to watch</span>
+        {embedded ? <span /> : <span style={tiny}>Indicators to watch</span>}
         <span style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <span style={tiny} title="Share of the conditioned market read pushing price up vs down — from the engine scenario distribution">Force balance</span>
@@ -1178,12 +1293,18 @@ function BottomDock({ dist }: { dist: { w: Record<string, number> } }) {
           );
         })}
       </div>
-      <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap", fontFamily: mono, fontSize: 9, color: K.inkMute, letterSpacing: 0.2 }}>
-        <span>Values from the</span>
-        <span style={{ display: "inline-flex", alignItems: "center" }}><CalaMark height={12} />-derived</span>
-        <span>timeseries knowledge graph · 2026 June</span>
-      </div>
+      {!embedded && <CalaFooter />}
     </div>
+  );
+}
+// Shared provenance footer — shown under both dock views (cala wordmark inline).
+function CalaFooter() {
+  return (
+    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap", fontFamily: mono, fontSize: 9, color: K.inkMute, letterSpacing: 0.2 }}>
+      <span>Values from the</span>
+      <span style={{ display: "inline-flex", alignItems: "center" }}><CalaMark height={12} />-derived</span>
+      <span>timeseries knowledge graph · 2026 June</span>
+    </span>
   );
 }
 

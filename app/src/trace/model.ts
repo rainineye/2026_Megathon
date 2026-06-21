@@ -58,8 +58,7 @@ export interface CanvasEdge {
 }
 export function nodeSize(node: Pick<CanvasFactor, "id" | "role">) {
   if (node.role === "protocol") return { w: PROTOCOL_W, h: PROTOCOL_H };
-  if (node.id === "structural_shortage" || node.id === "housing_shortage") return { w: PROTOTYPE_W, h: PROTOTYPE_H };
-  return { w: CW, h: CH };
+  return { w: PROTOTYPE_W, h: PROTOTYPE_H };
 }
 export interface Vars { price: number; deposit: number; ceil: number; rate: number; hor: number; flex: boolean; }
 export type VarKey = "price" | "deposit" | "ceil" | "rate" | "hor" | "flex";
@@ -120,9 +119,8 @@ export const fmtVar = (d: PersonalVarDef, v: Vars): string => {
 };
 
 export interface PersonalNode { id: string; key: VarKey; label: string; value: string; x: number; y: number; }
-// Private gutter sits in the bottom 'personal' lane, left of personal_decision_subdrivers
-// (COL.DRV=1144, y≈2250). Two columns × N rows, on the dot grid.
-export const PV_X = 600;
+// Private value cards sit inside the horizontal Personal Variables area.
+export const PV_X = 3068;
 /** Build the private-variable node + edge layer for the active variables. */
 export function personalLayer(active: VarKey[], vars: Vars): { nodes: PersonalNode[]; edges: CanvasEdge[] } {
   const defs = PERSONAL_VARS.filter((d) => active.includes(d.id));
@@ -132,7 +130,7 @@ export function personalLayer(active: VarKey[], vars: Vars): { nodes: PersonalNo
     label: d.short,
     value: fmtVar(d, vars),
     x: PV_X + (index % 2) * 200,
-    y: 2160 + Math.floor(index / 2) * 90,
+    y: 160 + Math.floor(index / 2) * 82,
   }));
   // Each private value plugs into the personal-decision driver node (same lane) — not
   // out to the conditioned factors / the read. The actual conditioning math still uses
@@ -263,42 +261,130 @@ export function personalAdvice(v: Vars, active: VarKey[], dist: Record<string, n
     case "shortage_dominates":
       return {
         headline: has("hor") && hor >= 8 ? "Lean buy — time is on your side" : "Buy only if you can hold",
-        body: `Structural shortage leads (${pct}%). ${has("hor") ? `Over ${hor} years it should outweigh today's cooling — ` : ""}${has("rate") && has("ceil") ? `if your ${rate.toFixed(1)}% quote keeps the payment under €${ceil}/mo, buying to hold is defensible.` : "buying to hold is defensible once financing fits."}`,
+        body: `Structural shortage leads (${pct}%)${has("hor") ? ` — your ${hor}-yr horizon rides out the cooling` : ""}; buy to hold once financing fits.`,
       };
     case "financing_pressure":
     case "user_constraint":
       return {
         headline: "Fix financing before you commit",
-        body: `Your budget is the binding constraint (${pct}%). ${has("rate") ? `A sharper quote than ${rate.toFixed(1)}% moves your outcome more than waiting on prices; ` : ""}${has("ceil") ? `at €${ceil}/mo you're near the edge — negotiate the rate or widen the search.` : "shop the rate hard first."}`,
+        body: `Budget is the binding constraint (${pct}%) — shop a sharper rate than ${rate.toFixed(1)}%; it moves your outcome more than waiting.`,
       };
     case "investor_window":
       return {
         headline: "A short entry window is open",
-        body: `Investor sell-offs have loosened supply (${pct}%). If financing is ready${has("ceil") ? ` within €${ceil}/mo` : ""}, this is a better-than-average entry — measured in months, not years.`,
+        body: `Supply window open (${pct}%) — if financing's ready${has("ceil") ? ` within €${ceil}/mo` : ""}, it's a better-than-average entry.`,
       };
     case "regional_divergence":
       return {
         headline: has("flex") ? "Use your flexibility as leverage" : "Pick the region before the timing",
         body: has("flex")
-          ? `Regional divergence leads (${pct}%) and you can move — widen to cooler provincial markets where ${has("ceil") ? `€${ceil}/mo` : "your budget"} stretches further.`
-          : `Markets are diverging (${pct}%); the national read hides big local gaps — choose the region first, then the moment.`,
+          ? `Regional divergence leads (${pct}%) — use your mobility: widen to cooler provincial markets.`
+          : `Markets are diverging (${pct}%) — pick the region before the moment; the national read hides local gaps.`,
       };
     default:
-      return { headline: "Mixed signals — keep conditioning", body: `No single force dominates (lead ${pct}%). Sharpen your variables and re-run to separate them.` };
+      return { headline: "Mixed signals — keep conditioning", body: `No single force dominates (lead ${pct}%) — sharpen your variables and re-run.` };
   }
+}
+
+// ---- decision layer: market read + personal exposure → action fit ------------
+// The 3 actions of the demo question. Their % is a RELATIVE FIT (how well each
+// action suits this user given the conditioned read), NOT a probability that the
+// action is "correct" — labeled "fit" in the UI per the honesty guardrail.
+export const ACTIONS: ReadonlyArray<readonly [string, string]> = [
+  ["buy", "Buy in the next 6 months"],
+  ["wait", "Wait 6–12 months · monitor"],
+  ["rent", "Keep renting for now"],
+];
+// Transparent payoff: how well each action fits each market scenario (0..1).
+const ACTION_PAYOFF: Record<string, { buy: number; wait: number; rent: number }> = {
+  shortage_dominates:  { buy: 1.0,  wait: 0.35, rent: 0.2 },   // prices keep rising → get in / hold
+  financing_pressure:  { buy: 0.3,  wait: 0.85, rent: 0.6 },   // cooling, capacity binds → wait
+  investor_window:     { buy: 0.95, wait: 0.4,  rent: 0.2 },   // short supply window → enter now
+  regional_divergence: { buy: 0.45, wait: 0.8,  rent: 0.5 },   // pick the region first → wait
+  user_constraint:     { buy: 0.2,  wait: 0.55, rent: 0.85 },  // budget binds → rent / resize
+};
+export interface DecisionRead {
+  actions: Array<{ id: string; label: string; fit: number }>;   // fit = relative %, sums to 1, sorted desc
+  top: string; topLabel: string; confidence: "low" | "medium" | "high"; margin: number;
+}
+/** Map the conditioned scenario read + personal exposure → a buy/wait/rent fit. */
+export function decisionDistribution(v: Vars, active: VarKey[], dist: Record<string, number>, br: number): DecisionRead | null {
+  if (active.length === 0) return null;
+  const s: Record<string, number> = { buy: 0, wait: 0, rent: 0 };
+  for (const scen in ACTION_PAYOFF) {
+    const w = dist[scen] ?? 0, p = ACTION_PAYOFF[scen];
+    s.buy += w * p.buy; s.wait += w * p.wait; s.rent += w * p.rent;
+  }
+  const has = (k: VarKey) => active.includes(k);
+  // personal exposure tilt — only where the relevant variable is in play.
+  if (has("ceil")) {
+    if (br < 0) { s.buy *= 0.45; s.rent += 0.22; s.wait += 0.1; }   // can't afford the payment → rent / wait
+    else if (br > 0.3) s.buy += 0.15;                                // comfortable buffer → buying is viable
+  }
+  if (has("hor")) {
+    if (v.hor >= 8) s.buy += 0.12;                                   // long horizon rides out swings → buy
+    else if (v.hor <= 3) { s.rent += 0.15; s.buy -= 0.08; }          // short horizon → renting is safer
+  }
+  if (has("flex") && v.flex) s.wait += 0.06;                         // region-flex → waiting to choose pays
+  let t = 0; for (const k in s) { s[k] = Math.max(0.01, s[k]); t += s[k]; }
+  const actions = ACTIONS.map(([id, label]) => ({ id, label, fit: s[id] / t })).sort((a, b) => b.fit - a.fit);
+  const margin = actions[0].fit - actions[1].fit;
+  const confidence = margin > 0.18 ? "high" : margin > 0.08 ? "medium" : "low";
+  return { actions, top: actions[0].id, topLabel: actions[0].label, confidence, margin };
 }
 
 export function curve(a: CanvasFactor, b: CanvasFactor) {
   const aSize = nodeSize(a), bSize = nodeSize(b);
-  const ax = a.x + aSize.w, ay = a.y + aSize.h / 2, bx = b.x, by = b.y + bSize.h / 2, dx = bx - ax;
-  return { d: `M ${ax} ${ay} C ${ax + dx * 0.4} ${ay}, ${bx - dx * 0.4} ${by}, ${bx} ${by}`, mx: (ax + bx) / 2, my: (ay + by) / 2 };
+  const acx = a.x + aSize.w / 2, bcx = b.x + bSize.w / 2;
+  const below = b.y > a.y + aSize.h + 18;
+  if (below) {
+    const ax = acx, ay = a.y + aSize.h, bx = bcx, by = b.y, dy = by - ay;
+    return { d: `M ${ax} ${ay} C ${ax} ${ay + dy * 0.45}, ${bx} ${by - dy * 0.45}, ${bx} ${by}`, mx: (ax + bx) / 2, my: (ay + by) / 2 };
+  }
+  if (b.x >= a.x + aSize.w - 8) {
+    const ax = a.x + aSize.w, ay = a.y + aSize.h / 2, bx = b.x, by = b.y + bSize.h / 2, dx = bx - ax;
+    return { d: `M ${ax} ${ay} C ${ax + dx * 0.4} ${ay}, ${bx - dx * 0.4} ${by}, ${bx} ${by}`, mx: (ax + bx) / 2, my: (ay + by) / 2 };
+  }
+  const ax = acx, ay = a.y + aSize.h, bx = bcx, by = b.y, dy = by - ay || 1;
+  return { d: `M ${ax} ${ay} C ${ax} ${ay + dy * 0.45}, ${bx} ${by - dy * 0.45}, ${bx} ${by}`, mx: (ax + bx) / 2, my: (ay + by) / 2 };
 }
 // EXTEND: enrich with real per-factor → candidate support once the engine exposes it.
 export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[]; edges: CanvasEdge[] } | null {
   if (!res?.factors?.length) return null;
   const cleanText = (text: string) =>
     text.replace(/[#*_`|]/g, " ").replace(/\s+/g, " ").replace(/^[-–—]\s*/, "").trim();
-  const displayMetric = (f: { top_metrics?: string[]; summary?: string }) => {
+  const signalOf = (f: { id: string; label: string }) => {
+    const compact: Record<string, string> = {
+      mortgage_lending_standards_outlook: "lending standards",
+      income_borrowing_capacity: "income capacity",
+      rate_price_splitting_test: "rate-price split",
+      borrow_interest_credit_channel: "mortgage-rate channel",
+      borrowing_capacity_subdrivers: "loan capacity levers",
+      financing_pressure: "credit affordability",
+      demographics_migration_household_formation: "population formation",
+      macro_labor_confidence_policy: "GDP / jobs / confidence",
+      equity_wealth_liquidity_channel: "wealth liquidity",
+      macro_demand: "demand baseline",
+      nitrogen_construction_constraint: "nitrogen permits",
+      grid_congestion: "grid capacity",
+      construction_costs: "build-cost viability",
+      municipal_land_policy: "land + local planning",
+      supply_pipeline_subdrivers: "permits + completions",
+      structural_shortage: "housing deficit",
+      box3_private_rental_tax_channel: "Box 3 tax pressure",
+      affordable_rent_landlord_exit: "rent caps / exits",
+      investor_selloff_rental_policy: "landlord net selling",
+      local_market_subdrivers: "local liquidity",
+      city_overbidding: "overbidding pressure",
+      regional_tightness: "city-level tightness",
+      personal_decision_subdrivers: "personal constraints",
+    };
+    if (compact[f.id]) return compact[f.id];
+    return cleanText(f.label).slice(0, 24).toLowerCase();
+  };
+  const displayMetric = (f: { id: string; label: string; top_metrics?: string[]; summary?: string }) => {
+    const signal = signalOf(f);
+    if (signal) return signal;
     const metric = (f.top_metrics || []).find((m) => {
       const s = cleanText(m);
       return s && /\d/.test(s) && !/^below is\b/i.test(s) && !/^(netherlands|latest|dutch)\b/i.test(s);
@@ -308,6 +394,8 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
   };
   const catOf = (f: { id: string; label: string }): Category => {
     const s = (f.id + " " + f.label).toLowerCase();
+    if (/macro_labor_confidence_policy|equity_wealth_liquidity_channel/.test(s)) return "demand";
+    if (/municipal_land_policy/.test(s)) return "supply";
     if (/market_state/.test(s)) return "outcome";
     if (/official_price_transaction_measurement|price_transaction_outcome/.test(s)) return "outcome";
     if (/rate_price_splitting_test/.test(s)) return "financing";
@@ -321,58 +409,53 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
   };
   const labelOf = (f: { id: string; label: string }) =>
     f.id === "supply_pipeline_subdrivers" ? "Housing permits / pipeline" : f.label;
-  // ── Layout grid (graphic-designer rules; everything pins to the GRID dots) ──
-  // Columns flow cause → effect, left → right, indexed by causal depth so that ALL
-  // drivers land in one aligned column (DRV) that fans into the outcome. Column
-  // pitch = 11·GRID (286), sibling row pitch = 5·GRID (130) — both multiples of the
-  // dot grid, so spacing reads as uniform. Groups are horizontal lanes stacked top
-  // → bottom; within a lane, subfactors right-align toward their driver.
-  const COL = { L4: 0, L3: 286, L2: 572, L1: 858, DRV: 1144, PROTOCOL: 1430, MKT: 1716, OUT: 2002 };
+  // ── Horizontal overview layout: each causal area is one module in a row. The
+  // top component in each module points down into the centered Trace Core Protocol.
+  const AREA_W = 546, AREA_GAP = 52, AREA0 = 52;
+  const AX = {
+    affordability: AREA0,
+    macro_demand: AREA0 + (AREA_W + AREA_GAP),
+    supply_side: AREA0 + (AREA_W + AREA_GAP) * 2,
+    policy_supply: AREA0 + (AREA_W + AREA_GAP) * 3,
+    regional: AREA0 + (AREA_W + AREA_GAP) * 4,
+    personal: AREA0 + (AREA_W + AREA_GAP) * 5,
+  };
+  const LEFT = 26, RIGHT = 282, CENTER = 154;
+  const ROW = { one: 130, two: 300, three: 470, four: 640, midOne: 230, midTwo: 400, driver: 790, protocol: 1040 };
+  const PROTOCOL_X = AREA0 + ((AREA_W + AREA_GAP) * 5 + AREA_W) / 2 - PROTOCOL_W / 2;
   const layout: Record<string, { x: number; y: number; role?: CanvasFactor["role"]; group?: FactorGroup }> = {
-    // ── lane: affordability → financing_pressure ──
-    mortgage_lending_standards_outlook: { x: COL.L2, y: 0, role: "subfactor", group: "affordability" },
-    income_borrowing_capacity: { x: COL.L2, y: 130, role: "subfactor", group: "affordability" },
-    rate_price_splitting_test: { x: COL.L2, y: 260, role: "subfactor", group: "affordability" },
-    borrow_interest_credit_channel: { x: COL.L1, y: 78, role: "subfactor", group: "affordability" },
-    borrowing_capacity_subdrivers: { x: COL.L1, y: 208, role: "subfactor", group: "affordability" },
-    financing_pressure: { x: COL.DRV, y: 130, role: "driver", group: "affordability" },
+    mortgage_lending_standards_outlook: { x: AX.affordability + LEFT, y: ROW.one, role: "subfactor", group: "affordability" },
+    income_borrowing_capacity: { x: AX.affordability + LEFT, y: ROW.two, role: "subfactor", group: "affordability" },
+    rate_price_splitting_test: { x: AX.affordability + LEFT, y: ROW.three, role: "subfactor", group: "affordability" },
+    borrow_interest_credit_channel: { x: AX.affordability + RIGHT, y: ROW.midOne, role: "subfactor", group: "affordability" },
+    borrowing_capacity_subdrivers: { x: AX.affordability + RIGHT, y: ROW.midTwo, role: "subfactor", group: "affordability" },
+    financing_pressure: { x: AX.affordability + CENTER, y: ROW.driver, role: "driver", group: "affordability" },
 
-    // ── lane: macro demand → macro_demand ──
-    demographics_migration_household_formation: { x: COL.L1, y: 458, role: "subfactor", group: "macro_demand" },
-    macro_labor_confidence_policy: { x: COL.L1, y: 588, role: "subfactor", group: "macro_demand" },
-    equity_wealth_liquidity_channel: { x: COL.L1, y: 718, role: "subfactor", group: "macro_demand" },
-    macro_demand: { x: COL.DRV, y: 588, role: "driver", group: "macro_demand" },
+    demographics_migration_household_formation: { x: AX.macro_demand + CENTER, y: ROW.one, role: "subfactor", group: "macro_demand" },
+    macro_labor_confidence_policy: { x: AX.macro_demand + CENTER, y: ROW.two, role: "subfactor", group: "macro_demand" },
+    equity_wealth_liquidity_channel: { x: AX.macro_demand + CENTER, y: ROW.three, role: "subfactor", group: "macro_demand" },
+    macro_demand: { x: AX.macro_demand + CENTER, y: ROW.driver, role: "driver", group: "macro_demand" },
 
-    // ── lane: supply side → structural_shortage. Bottleneck components feed the
-    //    permits/pipeline node directly; the duplicate L3 "outlook" group and the L2
-    //    bottleneck-breakdown aggregator shell were removed (they re-described these). ──
-    nitrogen_construction_constraint: { x: COL.L2, y: 916, role: "subfactor", group: "supply_side" },
-    grid_congestion: { x: COL.L2, y: 1046, role: "subfactor", group: "supply_side" },
-    construction_costs: { x: COL.L2, y: 1176, role: "subfactor", group: "supply_side" },
-    municipal_land_policy: { x: COL.L2, y: 1306, role: "subfactor", group: "supply_side" },
-    supply_pipeline_subdrivers: { x: COL.L1, y: 1098, role: "subfactor", group: "supply_side" },
-    structural_shortage: { x: COL.DRV, y: 1098, role: "driver", group: "supply_side" },
+    nitrogen_construction_constraint: { x: AX.supply_side + LEFT, y: ROW.one, role: "subfactor", group: "supply_side" },
+    grid_congestion: { x: AX.supply_side + LEFT, y: ROW.two, role: "subfactor", group: "supply_side" },
+    construction_costs: { x: AX.supply_side + LEFT, y: ROW.three, role: "subfactor", group: "supply_side" },
+    municipal_land_policy: { x: AX.supply_side + LEFT, y: ROW.four, role: "subfactor", group: "supply_side" },
+    supply_pipeline_subdrivers: { x: AX.supply_side + RIGHT, y: ROW.midTwo, role: "subfactor", group: "supply_side" },
+    structural_shortage: { x: AX.supply_side + CENTER, y: ROW.driver, role: "driver", group: "supply_side" },
 
-    // ── lane: policy / rental → investor_selloff_rental_policy ──
-    // Two distinct mechanisms only: Box-3 tax channel + Affordable-Rent → landlord exit.
-    // (Dropped the generic 'policy_tax_subdrivers' umbrella and the duplicate
-    // 'rental_regulation_box3', which just restated these two.)
-    box3_private_rental_tax_channel: { x: COL.L1, y: 1504, role: "subfactor", group: "policy_supply" },
-    affordable_rent_landlord_exit: { x: COL.L1, y: 1634, role: "subfactor", group: "policy_supply" },
-    investor_selloff_rental_policy: { x: COL.DRV, y: 1560, role: "driver", group: "policy_supply" },
+    box3_private_rental_tax_channel: { x: AX.policy_supply + LEFT, y: ROW.midTwo, role: "subfactor", group: "policy_supply" },
+    affordable_rent_landlord_exit: { x: AX.policy_supply + RIGHT, y: ROW.midTwo, role: "subfactor", group: "policy_supply" },
+    investor_selloff_rental_policy: { x: AX.policy_supply + CENTER, y: ROW.driver, role: "driver", group: "policy_supply" },
 
-    // ── lane: regional → regional_tightness ──
-    local_market_subdrivers: { x: COL.L1, y: 1832, role: "subfactor", group: "regional" },
-    city_overbidding: { x: COL.L1, y: 1962, role: "subfactor", group: "regional" },
-    regional_tightness: { x: COL.DRV, y: 1894, role: "driver", group: "regional" },
+    local_market_subdrivers: { x: AX.regional + CENTER, y: ROW.midOne, role: "subfactor", group: "regional" },
+    city_overbidding: { x: AX.regional + CENTER, y: ROW.midTwo, role: "subfactor", group: "regional" },
+    regional_tightness: { x: AX.regional + CENTER, y: ROW.driver, role: "driver", group: "regional" },
 
-    // ── lane: personal (private gutter + standalone driver) ──
-    personal_decision_subdrivers: { x: COL.DRV, y: 2250, role: "driver", group: "personal" },
+    personal_decision_subdrivers: { x: AX.personal + CENTER, y: ROW.driver, role: "driver", group: "personal" },
 
-    // ── outcome convergence: all drivers → market_state → measured price ──
-    market_state: { x: COL.MKT, y: 1098, role: "root", group: "outcome" },
-    official_price_transaction_measurement: { x: COL.OUT, y: 968, role: "subfactor", group: "outcome" },
-    price_transaction_outcome: { x: COL.OUT, y: 1098, role: "outcome", group: "outcome" },
+    // (outcome nodes — market_state / measured price — removed from the canvas; the
+    //  outcome read + decision now live in the bottom dock. Drivers converge on the
+    //  Trace Core Protocol engine node, which bridges to that dock.)
   };
   const visibleIds = new Set(Object.keys(layout));
   const visible = res.factors.filter((f) => visibleIds.has(f.id));
@@ -415,6 +498,14 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
     const level = f.level ?? 2;
     return Math.max(0.58, 1 - Math.max(0, level - 2) * 0.12);
   };
+  const credibilityOf = (f: { evidence_status_rollup?: Record<string, number>; dominant_evidence_status?: string }) => {
+    const entries = Object.entries(f.evidence_status_rollup || {}).filter(([, value]) => value > 0);
+    if (!entries.length) return "mixed" as const;
+    const total = entries.reduce((sum, [, value]) => sum + value, 0);
+    const [topStatus, topCount] = entries.sort((a, b) => b[1] - a[1])[0];
+    const factual = /^(observed_fact|policy_in_force|methodology_or_definition)$/.test(topStatus);
+    return factual && topCount / total >= 0.72 ? "primary" as const : "mixed" as const;
+  };
   const mappedFactors: CanvasFactor[] = visible.map((f) => {
     const dir = (f.direction_on_prices || "").toLowerCase();
     const p = layout[f.id];
@@ -424,10 +515,10 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
       id: f.id, label: labelOf(f), category: catOf(f),
       value: displayMetric(f),
       trend: dir.includes("up") || dir.includes("rais") ? "↑" : dir.includes("down") || dir.includes("lower") ? "↓" : "→",
-      evidenceCount: f.source_count ?? 0, credibility: f.dominant_evidence_status ? "primary" : "mixed",
+      evidenceCount: f.source_count ?? 0, credibility: credibilityOf(f),
       contested: /not_settled|contested|disput|split/.test(`${f.id} ${f.dominant_evidence_status || ""}`),
       level: f.level,
-      parent: f.parent ?? null,
+      parent: f.id === "affordable_rent_landlord_exit" ? "investor_selloff_rental_policy" : f.parent ?? null,
       role: p.role,
       group: p.group,
       weightReady: Object.keys(support).length > 0,
@@ -460,8 +551,8 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
     weightReady: false,
     mechanism: "Pearl's Causal Framework",
     support: {},
-    x: snap(COL.PROTOCOL),
-    y: snap(1098),
+    x: snap(PROTOCOL_X),
+    y: snap(ROW.protocol),
     evidence: null,
   };
   const factors: CanvasFactor[] = [...mappedFactors, protocolNode];
@@ -481,16 +572,34 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
     // grid_congestion's data-parent is structural_shortage; re-route it to the
     // permits/pipeline node (see addContains below) so it doesn't bypass it.
     .filter((e) => !(e.source === "structural_shortage" && e.target === "grid_congestion"))
+    // These fixture containment edges are valid research ancestry but too ambiguous
+    // for the visual hierarchy: each child gets a clearer manual parent below.
+    .filter((e) => !(e.source === "borrow_interest_credit_channel" && ["mortgage_lending_standards_outlook", "income_borrowing_capacity"].includes(e.target)))
+    .filter((e) => !(
+      ["box3_private_rental_tax_channel", "affordable_rent_landlord_exit"].includes(e.source) &&
+      ["box3_private_rental_tax_channel", "affordable_rent_landlord_exit"].includes(e.target)
+    ))
     .map((e) => ({ from: e.target, to: e.source, strength: 0.35, sign: 1 as const, relation: "contains" as const }));
   const addContains = (from: string, to: string) => {
     if (!ids.has(from) || !ids.has(to)) return;
     if (contains.some((e) => e.from === from && e.to === to)) return;
     contains.push({ from, to, strength: 0.35, sign: 1, relation: "contains" });
   };
+  addContains("mortgage_lending_standards_outlook", "borrowing_capacity_subdrivers");
+  addContains("income_borrowing_capacity", "borrowing_capacity_subdrivers");
+  addContains("rate_price_splitting_test", "financing_pressure");
+  addContains("borrow_interest_credit_channel", "financing_pressure");
+  addContains("demographics_migration_household_formation", "macro_demand");
+  addContains("macro_labor_confidence_policy", "macro_demand");
+  addContains("equity_wealth_liquidity_channel", "macro_demand");
   // the supply bottleneck components feed the permits / pipeline node directly
+  addContains("nitrogen_construction_constraint", "supply_pipeline_subdrivers");
   addContains("grid_congestion", "supply_pipeline_subdrivers");
+  addContains("construction_costs", "supply_pipeline_subdrivers");
+  addContains("municipal_land_policy", "supply_pipeline_subdrivers");
   addContains("box3_private_rental_tax_channel", "investor_selloff_rental_policy");
   addContains("affordable_rent_landlord_exit", "investor_selloff_rental_policy");
+  addContains("local_market_subdrivers", "regional_tightness");
   protocolDriverIds.forEach((id) => addContains(id, "trace_core_protocol"));
   addContains("trace_core_protocol", "market_state");
   const edges: CanvasEdge[] = contains;
