@@ -1,0 +1,24 @@
+megathon.traceintelligence.io {
+	encode gzip zstd
+
+	# API first: reverse-proxy /api/* to the warm uvicorn process.
+	# Must be a `handle` block, NOT a matcher + try_files, because Caddy runs
+	# try_files (rewrite) BEFORE reverse_proxy in the default directive order —
+	# that rewrote /api/* to /index.html and the API never got hit. `handle`
+	# blocks are mutually exclusive and evaluated top-to-bottom, so /api/* is
+	# routed to the proxy and everything else to the SPA.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# Everything else: static Vite build + SPA fallback.
+	handle {
+		root * /srv/megathon/dist
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Caddy provisions + renews the Let's Encrypt cert automatically.
+	# Ports 80/443 were open by default on this Hetzner box (no provider
+	# firewall rule needed); ufw is inactive.
+}

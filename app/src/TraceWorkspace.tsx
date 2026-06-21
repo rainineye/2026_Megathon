@@ -13,13 +13,22 @@ import CanvasGraph from "./trace/CanvasGraph";
 import {
   K, CAT_COLOR, SCENARIOS, INDICATORS, NET_READ, FALLBACK_FACTORS, FALLBACK_EDGES,
   conditionDistribution, factorWeights, adaptFactorTree, personalLayer, personalAdvice, fmtVar, PERSONAL_VARS,
-  CW, CH, VBW, VBH,
+  CW, CH, VBW, VBH, nodeSize,
   type CanvasFactor, type CanvasEdge, type Vars, type Category, type VarKey, type PersonalVarDef,
 } from "./trace/model";
 
 const mono = "'JetBrains Mono', monospace", sans = "'Instrument Sans', sans-serif", serif = "'Fraunces', serif";
 const editorial = "'Newsreader', 'Fraunces', serif";
 const SCEN_LABEL = Object.fromEntries(SCENARIOS.map(([id, l]) => [id, l]));
+
+type ProtocolRun = {
+  support?: Record<string, number>;
+  distribution?: Record<string, number>;
+  candidate_support?: Record<string, number>;
+  scenario_distribution?: Record<string, number>;
+  factor_weights?: Record<string, number>;
+  factor_support?: Record<string, Record<string, number>>;
+};
 
 export default function TraceWorkspace() {
   const [factors, setFactors] = useState<CanvasFactor[]>(FALLBACK_FACTORS);
@@ -34,15 +43,13 @@ export default function TraceWorkspace() {
   const [rightOn, setRightOn] = useState(true);   // floating right panel (info display)
   const [dockOn, setDockOn] = useState(true);     // floating bottom dock (indicators)
   const [isFs, setIsFs] = useState(false);
-  const [divHover, setDivHover] = useState(false);   // center focus-anchor visibility
   const [hover, setHover] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
-  const [cam, setCam] = useState({ x: 0, y: 0, k: 1 });
-  const [engineDist, setEngineDist] = useState<Record<string, number> | null>(null);
+  const [cam, setCam] = useState({ x: 40, y: 20, k: 0.46 });   // default fits the taller gridded graph
+  const [protocolRun, setProtocolRun] = useState<ProtocolRun | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const splitDrag = useRef<{ sx: number; cx: number } | null>(null);
   const prevActive = useRef(0);
 
   useEffect(() => {
@@ -52,25 +59,10 @@ export default function TraceWorkspace() {
       .catch(() => alive && setSource("offline"));
     runDefaultTier()
       .then((res) => {
-        const support = (res.support ?? res.distribution ?? res.candidate_support) as Record<string, number> | undefined;
-        if (alive && support) setEngineDist(support);
+        if (alive) setProtocolRun(res as ProtocolRun);
       })
-      .catch(() => { if (alive) setEngineDist(null); });
+      .catch(() => { if (alive) setProtocolRun(null); });
     return () => { alive = false; };
-  }, []);
-
-  // focus divider drag — PANS the one canvas horizontally (reveals more input vs
-  // outcome); nothing reflows, the divider is just a locator.
-  useEffect(() => {
-    const move = (e: PointerEvent) => {
-      if (!splitDrag.current || !bodyRef.current) return;
-      const w = bodyRef.current.getBoundingClientRect().width || 1;
-      const nx = splitDrag.current.cx + ((e.clientX - splitDrag.current.sx) / w) * VBW;
-      setCam((c) => ({ ...c, x: nx }));
-    };
-    const up = () => { splitDrag.current = null; setDivHover(false); };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
   }, []);
 
   // keyboard / pinch zoom should affect the CANVAS, not the whole page.
@@ -89,37 +81,41 @@ export default function TraceWorkspace() {
   }, []);
 
   // outputs read the LAST-RUN snapshot; the graph's private nodes track the live edits.
-  const dist = conditionDistribution(applied, appliedActive, engineDist);
-  const weights = engineDist ? factorWeights(factors, dist.w) : {};
-  const displayFactors = engineDist ? factors : factors.map((f) => ({ ...f, weightReady: false }));
+  const protocolDist = protocolRun?.scenario_distribution ?? protocolRun?.support ?? protocolRun?.distribution ?? protocolRun?.candidate_support ?? null;
+  const dist = protocolDist ? { w: protocolDist, buf: 0, br: 0 } : conditionDistribution(applied, appliedActive, null);
+  const weights = protocolRun?.factor_weights ?? (protocolDist ? factorWeights(factors, dist.w) : {});
+  const protocolSupport = protocolRun?.factor_support;
+  const factorsWithProtocolSupport = protocolSupport
+    ? factors.map((f) => protocolSupport[f.id] ? { ...f, support: protocolSupport[f.id], weightReady: Object.keys(protocolSupport[f.id]).length > 0 } : f)
+    : factors;
+  const displayFactors = protocolDist ? factorsWithProtocolSupport : factors.map((f) => ({ ...f, weightReady: false }));
   const personal = personalLayer(activeVars, vars);
   const advice = personalAdvice(applied, appliedActive, dist.w);
 
-  // ── inject the protocol READ as on-canvas conclusion cards (option 1): the
-  //    scenario distribution from `dist`, drawn in the same card language and wired
-  //    from the outcome node. Grounded in the engine output — nothing fabricated.
+  // The scenario READ (conclusions) renders as ON-CANVAS cards — same component as
+  // the causal factor cards — in a conclusions column to the right of the measured
+  // price outcome. NOT a separate side panel. Grounded in the engine distribution.
   const scenCat: Record<string, Category> = { shortage_dominates: "supply", financing_pressure: "financing", investor_window: "policy", regional_divergence: "regional", user_constraint: "personal" };
   const outcomeF = factors.find((f) => f.role === "outcome" || f.category === "outcome");
   const ranked = SCENARIOS.map(([id, label]) => ({ id, label, w: dist.w[id] ?? 0 })).sort((a, b) => b.w - a.w);
+  const CONC_X = 2288;   // conclusions column = OUT(2002) + one column pitch (286)
   const conclNodes: CanvasFactor[] = ranked.map((s, i) => ({
     id: `read_${s.id}`, label: s.label, category: scenCat[s.id] ?? "outcome", role: "outcome",
-    value: s.label, trend: "→", evidenceCount: factors.filter((f) => (f.support?.[s.id] ?? 0) > 0).length,
+    value: `${Math.round(s.w * 100)}% likely`, trend: SCEN_META[s.id]?.dir === "up" ? "↑" : SCEN_META[s.id]?.dir === "down" ? "↓" : "→",
+    evidenceCount: displayFactors.filter((f) => (f.support?.[s.id] ?? 0) > 0).length,
     credibility: "primary", contested: false, weightReady: true, mechanism: SCEN_META[s.id]?.note,
-    support: { [s.id]: 1 }, x: 2300, y: 300 + i * 104,
+    support: { [s.id]: 1 }, x: CONC_X, y: 838 + i * 130,
   }));
-  const conclEdges: CanvasEdge[] = ranked.flatMap((s) => {
-    const es: CanvasEdge[] = [];
-    if (outcomeF) es.push({ from: outcomeF.id, to: `read_${s.id}`, strength: 0.35 + s.w * 0.55, sign: 1, relation: "causal" });
-    const top = factors.filter((f) => (f.support?.[s.id] ?? 0) > 0).sort((a, b) => (b.support[s.id] ?? 0) - (a.support[s.id] ?? 0))[0];
-    if (top) es.push({ from: top.id, to: `read_${s.id}`, strength: 0.3 + (top.support[s.id] ?? 0) * 0.5, sign: 1, relation: "causal" });
-    return es;
-  });
+  const conclEdges: CanvasEdge[] = outcomeF
+    ? ranked.map((s) => ({ from: outcomeF.id, to: `read_${s.id}`, strength: 0.35 + s.w * 0.55, sign: 1 as const, relation: "causal" as const }))
+    : [];
+  const leadReadId = ranked.length ? `read_${ranked[0].id}` : undefined;
   const allFactors = [...displayFactors, ...conclNodes];
   const allEdges = [...edges, ...conclEdges];
   const allWeights = { ...weights, ...Object.fromEntries(ranked.map((s) => [`read_${s.id}`, s.w])) };
   const panelsOn = rightOn || dockOn;
   const togglePanels = () => { const v = !(rightOn || dockOn); setRightOn(v); setDockOn(v); };
-  const selFactor = sel ? factors.find((f) => f.id === sel) || null : null;
+  const selFactor = sel ? allFactors.find((f) => f.id === sel) || null : null;
   const selPersonal = sel?.startsWith("pv_") ? PERSONAL_VARS.find((d) => `pv_${d.id}` === sel) || null : null;
   const dirty = JSON.stringify(activeVars.slice().sort()) !== JSON.stringify(appliedActive.slice().sort())
     || activeVars.some((k) => vars[k] !== applied[k]);
@@ -127,7 +123,7 @@ export default function TraceWorkspace() {
   const zoom = (f: number) => setCam((c) => { const p = { x: 470, y: 300 }; const nk = Math.max(0.45, Math.min(2.6, c.k * f)); const wx = (p.x - c.x) / c.k, wy = (p.y - c.y) / c.k; return { x: p.x - wx * nk, y: p.y - wy * nk, k: nk }; });
   const fitView = () => {
     const boxes = [
-      ...factors.map((f) => ({ x: f.x, y: f.y, w: CW, h: CH })),
+      ...allFactors.map((f) => ({ x: f.x, y: f.y, ...nodeSize(f) })),
       ...personal.nodes.map((n) => ({ x: n.x, y: n.y, w: 120, h: 46 })),
     ];
     if (!boxes.length) return;
@@ -138,6 +134,62 @@ export default function TraceWorkspace() {
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
     setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
   };
+  // DEFAULT view: keep node text at its most-legible size (font-size baseline), centered
+  // on the graph; edges may overflow - pan to browse. This is the home view.
+  const defaultView = () => {
+    const ns = factors.length ? factors : allFactors;
+    if (!ns.length) return;
+    const minX = Math.min(...ns.map((f) => f.x)), minY = Math.min(...ns.map((f) => f.y));
+    const maxX = Math.max(...ns.map((f) => f.x + CW)), maxY = Math.max(...ns.map((f) => f.y + CH));
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const fitScale = rect ? Math.min(rect.width / VBW, rect.height / VBH) : 1;
+    const k = Math.max(0.6, Math.min(1.8, 14.5 / (13 * fitScale)));
+    setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
+  };
+  const focusComponent = (id: string) => {
+    const factor = allFactors.find((f) => f.id === id) || null;
+    const privateNode = personal.nodes.find((n) => n.id === id) || null;
+    const node = factor ?? privateNode;
+    setSel(id);
+    setHover(null);
+    setRightOn(true);
+    if (!node) return;
+
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const panelPx = 360;
+    const viewCenterX = rect
+      ? ((Math.max(rect.width - panelPx, rect.width * 0.52) * 0.5) / rect.width) * VBW
+      : VBW * 0.38;
+    const viewCenterY = VBH * 0.48;
+    const size = factor ? nodeSize(factor) : null;
+    const w = privateNode ? 120 : size?.w ?? CW;
+    const h = privateNode ? 46 : size?.h ?? CH;
+    const k = privateNode ? 1.72 : 1.42;
+    setCam({
+      x: viewCenterX - (node.x + w / 2) * k,
+      y: viewCenterY - (node.y + h / 2) * k,
+      k
+    });
+  };
+  const exitFocus = () => {
+    setSel(null);
+    setHover(null);
+    defaultView();
+  };
+
+  useEffect(() => {
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !sel) return;
+      event.preventDefault();
+      exitFocus();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  });
+
+  // settle to the default home view once the graph data loads.
+  useEffect(() => { defaultView(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [source]);
 
   // run the core protocol over the edited variables → commit the conditioned snapshot.
   const runProtocol = async () => {
@@ -145,8 +197,7 @@ export default function TraceWorkspace() {
     setRunning(true);
     try {
       const res = await runDefaultTier({ personal_variables: { ...vars } });
-      const support = (res.support ?? res.distribution ?? res.candidate_support) as Record<string, number> | undefined;
-      if (support) setEngineDist(support);
+      setProtocolRun(res as ProtocolRun);
       setApplied(vars);
       setAppliedActive(activeVars);
     } finally {
@@ -158,71 +209,61 @@ export default function TraceWorkspace() {
     if (document.fullscreenElement) document.exitFullscreen(); else el.requestFullscreen?.();
   };
   useEffect(() => {
-    const fn = () => setIsFs(!!document.fullscreenElement);
+    // Entering full screen clears both panels for a clean presentation canvas; a
+    // later click on a component re-calls the inspector (focusComponent), never the
+    // indicators dock. Exiting restores both.
+    const fn = () => {
+      const fs = !!document.fullscreenElement;
+      setIsFs(fs);
+      setRightOn(!fs);
+      setDockOn(!fs);
+    };
     document.addEventListener("fullscreenchange", fn);
     return () => document.removeEventListener("fullscreenchange", fn);
   }, []);
-  // reveal the left private gutter the moment the first variable is plugged in.
+  // fit the whole graph into view once the factor tree first arrives.
   useEffect(() => {
-    if (activeVars.length > 0 && prevActive.current === 0) setCam({ x: 196, y: 8, k: 0.84 });
-    if (activeVars.length === 0 && prevActive.current > 0) setCam({ x: 0, y: 0, k: 1 });
-    prevActive.current = activeVars.length;
-  }, [activeVars.length]);
+    if (factors.length && !prevActive.current) { fitView(); prevActive.current = 1; }
+  }, [factors.length]);
 
   return (
     <div ref={rootRef} style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: K.paper, color: K.ink, fontFamily: sans, overflow: "hidden" }}>
       <Header source={source} onRun={runProtocol} running={running} dirty={dirty}
         onFullscreen={toggleFullscreen} isFs={isFs} onTogglePanels={togglePanels} panelsOn={panelsOn} />
       <div ref={bodyRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
-        {/* ---- canvas — FULL viewport width; an internal divider splits graph | outcome ---- */}
-        <div ref={canvasRef}
-          onMouseMove={(e) => { if (splitDrag.current) return; const r = bodyRef.current?.getBoundingClientRect(); if (r) setDivHover(Math.abs(e.clientX - (r.left + r.width / 2)) < 70); }}
-          onMouseLeave={() => { if (!splitDrag.current) setDivHover(false); }}
-          style={{ position: "absolute", inset: 0, overflow: "hidden", background: K.paper }}>
-          <CanvasGraph factors={allFactors} edges={allEdges} weights={allWeights} personal={personal} sel={sel} hover={hover}
-            cam={cam} setCam={setCam} onHover={setHover} onSelect={setSel} onMove={moveFactor} />
+        {/* ---- canvas - FULL viewport width ---- */}
+        <div ref={canvasRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: K.paper }}>
+          <CanvasGraph factors={allFactors} edges={allEdges} weights={allWeights} lead={leadReadId} personal={personal} sel={sel} hover={hover}
+            cam={cam} setCam={setCam} onHover={setHover} onSelect={focusComponent} onMove={moveFactor} />
           <NavRail onZoom={zoom} onFit={fitView} k={cam.k} />
           <LegendBar />
         </div>
-        {/* center focus ANCHOR — appears when the cursor nears the middle; drag to push the whole
-            flowchart left (investigate causes) or right (reveal more outcome). Non-blocking. */}
-        <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", transform: "translateX(-50%)", width: 60, zIndex: 7, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-          <div onPointerDown={(e) => { splitDrag.current = { sx: e.clientX, cx: cam.x }; setDivHover(true); }}
-            title="Drag to push the graph — left to reveal more outcome, right to investigate the causes"
-            style={{ position: "relative", width: 22, height: "100%", cursor: "ew-resize", display: "flex", justifyContent: "center", opacity: divHover ? 1 : 0, transition: "opacity .2s", pointerEvents: divHover ? "auto" : "none" }}>
-            <div style={{ width: 1, height: "100%", background: K.rule }} />
-            <div style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", width: 22, height: 42, borderRadius: 11, background: K.paper, border: `1px solid ${K.rule}`, boxShadow: "0 1px 6px rgba(0,0,0,.16)", display: "flex", alignItems: "center", justifyContent: "center", color: K.inkSoft, fontFamily: mono, fontSize: 12 }}>⇆</div>
-          </div>
-        </div>
-        {/* ---- Inputs & inspector — right panel over the canvas (same fill, no shadow), closable ---- */}
+        {/* ---- Inputs & inspector - right panel over the canvas, closable ---- */}
         {rightOn ? (
-          <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, padding: 12, display: "flex", flexDirection: "column", gap: 10, zIndex: 8 }}>
-            {/* close — pinned top-right */}
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexShrink: 0 }}>
-              <button onClick={() => setRightOn(false)} title="Hide panel" style={{ border: "none", background: "none", color: K.inkMute, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 2 }}>✕</button>
-            </div>
-            {/* inspector — primary; scrolls within this bounded region */}
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-              <FoldSection title={selPersonal ? `Inspector · ${selPersonal.label}` : selFactor ? `Inspector · ${selFactor.label}` : "Inspector"} defaultOpen>
-                {selPersonal ? <PersonalDetail d={selPersonal} vars={vars} active={activeVars.includes(selPersonal.id)} onAdd={() => setActiveVars((a) => a.includes(selPersonal.id) ? a : [...a, selPersonal.id])} />
-                  : selFactor ? <NodeInvestigation f={selFactor} weight={weights[selFactor.id] ?? 0} />
-                  : <Empty text="Click a factor (or one of your private variables) on the canvas to inspect it." />}
-              </FoldSection>
-              {!selPersonal && selFactor?.evidence && (
-                <FoldSection title="Evidence" defaultOpen>
-                  <div style={{ fontSize: 12, lineHeight: 1.45 }}>{selFactor.evidence.claim}</div>
-                  {selFactor.evidence.url && <a href={selFactor.evidence.url} target="_blank" rel="noopener" style={{ display: "inline-block", marginTop: 7, color: K.secondary, fontSize: 10, fontFamily: mono }}>{selFactor.evidence.source} ↗</a>}
-                </FoldSection>
-              )}
-            </div>
-            {/* inputs — stuck to the bottom */}
-            <div style={{ flexShrink: 0, borderTop: `1px solid ${K.rule}`, paddingTop: 10, display: "flex", flexDirection: "column", gap: 10, maxHeight: "46%", overflowY: "auto" }}>
+          <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, display: "flex", flexDirection: "column", zIndex: 8 }}>
+            <style>{`.trace-scroll{scrollbar-width:thin;scrollbar-color:rgba(122,106,84,.22) transparent}.trace-scroll::-webkit-scrollbar{width:5px;height:5px}.trace-scroll::-webkit-scrollbar-track{background:transparent;border:none}.trace-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.trace-scroll::-webkit-scrollbar-thumb{background:rgba(122,106,84,.2);border-radius:99px}.trace-scroll:hover::-webkit-scrollbar-thumb{background:rgba(122,106,84,.4)}.trace-scroll::-webkit-scrollbar-corner{background:transparent}`}</style>
+            {/* INPUTS — primary controls, on top (its own light label; the padded section) */}
+            <div className="trace-scroll" style={{ flexShrink: 0, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10, maxHeight: "56%", overflowY: "auto" }}>
               <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Inputs</span>
               <AddVariablesCTA onPick={() => setPicker(true)} />
               {activeVars.length > 0 && (
                 <YourVariables active={activeVars} vars={vars} setVars={setVars} onManage={() => setPicker(true)}
                   onRemove={(k) => setActiveVars((a) => a.filter((x) => x !== k))} dirty={dirty} running={running} onRun={runProtocol} />
               )}
+            </div>
+            {/* INSPECTOR — light section header (matches the other labels) + detail, BELOW the inputs */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexShrink: 0, padding: "9px 12px 5px", borderTop: `1px solid ${K.rule}` }}>
+              <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selPersonal ? `Inspector · ${selPersonal.label}` : selFactor ? `Inspector · ${selFactor.label}` : "Inspector"}</span>
+              {sel && <button onClick={exitFocus} title="Exit focused component (Esc)" style={{ flexShrink: 0, border: `1px solid ${K.rule}`, background: K.paperDeep, color: K.inkSoft, cursor: "pointer", fontFamily: mono, fontSize: 8, letterSpacing: 0.8, textTransform: "uppercase", padding: "2px 6px", borderRadius: 2 }}>Esc · graph</button>}
+            </div>
+            <div className="trace-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", padding: "4px 12px 14px" }}>
+              {selPersonal ? <PersonalDetail d={selPersonal} vars={vars} active={activeVars.includes(selPersonal.id)} onAdd={() => setActiveVars((a) => a.includes(selPersonal.id) ? a : [...a, selPersonal.id])} />
+                : selFactor ? (
+                  selFactor.id === "trace_core_protocol"
+                    ? <ProtocolDetail />
+                    : <NodeInvestigation f={selFactor} weight={allWeights[selFactor.id] ?? 0} />
+                )
+                : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 28px" }}><Empty text="Click a factor (or one of your private variables) on the canvas to inspect it." /></div>}
             </div>
           </div>
         ) : (
@@ -231,7 +272,7 @@ export default function TraceWorkspace() {
         )}
       </div>
       {dockOn ? (
-        <BottomDock onClose={() => setDockOn(false)} />
+        <BottomDock dist={dist} />
       ) : (
         <button onClick={() => setDockOn(true)} title="Show indicators to watch"
           style={{ flexShrink: 0, height: 20, borderTop: `1px solid ${K.rule}`, background: K.paperDeep, cursor: "pointer", fontFamily: mono, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: K.inkSoft }}>＋ Indicators to watch</button>
@@ -254,12 +295,12 @@ const TOPIC_SUGGESTIONS: Array<{ topic: string; cat: string; people: number }> =
 
 // Contributors = people whose added public source SUSTAINED (un-challenged) into
 // the graph. Profile / DM links are fake doors for now. (Current topic's panel.)
-interface Contributor { name: string; init: string; color: string; verified: boolean; field: string; cred: number; sources: number; graphs: number }
+interface Contributor { name: string; init: string; color: string; verified: boolean; field: string; cred: number; sources: number; graphs: number; endorsements: number }
 const CONTRIBUTORS: Contributor[] = [
-  { name: "Dr. Marieke Visser", init: "MV", color: "#1C3A5E", verified: true, field: "Housing economics · DNB", cred: 0.94, sources: 42, graphs: 11 },
-  { name: "Liang Wei", init: "LW", color: "#5A6E48", verified: true, field: "Demography & migration", cred: 0.89, sources: 28, graphs: 7 },
-  { name: "Tomás Oliveira", init: "TO", color: "#7A6A54", verified: true, field: "Urban planning · TU Delft", cred: 0.83, sources: 19, graphs: 5 },
-  { name: "Sanne de Boer", init: "SB", color: "#A03A2C", verified: false, field: "Independent mortgage analyst", cred: 0.71, sources: 12, graphs: 3 },
+  { name: "Dr. Marieke Visser", init: "MV", color: "#1C3A5E", verified: true, field: "Housing economics · DNB", cred: 0.94, sources: 42, graphs: 11, endorsements: 37 },
+  { name: "Liang Wei", init: "LW", color: "#5A6E48", verified: true, field: "Demography & migration", cred: 0.89, sources: 28, graphs: 7, endorsements: 24 },
+  { name: "Tomás Oliveira", init: "TO", color: "#7A6A54", verified: true, field: "Urban planning · TU Delft", cred: 0.83, sources: 19, graphs: 5, endorsements: 16 },
+  { name: "Sanne de Boer", init: "SB", color: "#A03A2C", verified: false, field: "Independent mortgage analyst", cred: 0.71, sources: 12, graphs: 3, endorsements: 8 },
 ];
 // The collaborative graph's current shared read — a one-line conclusion + the
 // insights from the graph that sustain it. (Editorial; mirrors NET_READ.)
@@ -267,18 +308,18 @@ const GRAPH_READ = {
   dirChip: "↑ rising",
   title: "House prices still rising — but growth is decelerating",
   insights: [
-    "Structural shortage ~401k homes, still widening toward 2027",
-    "Mortgage rates near 3.6% keep borrowing capacity high",
-    "Price momentum +8.6% YoY, but cooling from the peak",
-    "Investor sell-off has opened a brief supply window",
-  ],
+    { text: "Structural shortage, still widening toward 2027", val: "~401k", dir: "up" },
+    { text: "Mortgage rates keep borrowing capacity high", val: "3.6%", dir: "down" },
+    { text: "Price momentum cooling from its peak", val: "+8.6% YoY", dir: "down" },
+    { text: "Investor sell-off opened a brief supply window", val: "-8.6k Q2", dir: "down" },
+  ] as Array<{ text: string; val: string; dir: "up" | "down" | "flat" }>,
 };
 const fakeDoor = (what: string) => alert(`${what} — coming soon`);
 function Avatar({ init, color, size = 28 }: { init: string; color: string; size?: number }) {
   return <span style={{ width: size, height: size, borderRadius: "50%", background: color, color: K.paper, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: sans, fontWeight: 600, fontSize: Math.round(size * 0.36), flexShrink: 0 }}>{init}</span>;
 }
 function VerifiedMark() {
-  return <span title="Verified contributor" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: "50%", background: K.secondary, color: K.paper, fontSize: 8, lineHeight: 1, flexShrink: 0 }}>✓</span>;
+  return <span title="Verified contributor" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, borderRadius: "50%", background: K.warn, color: K.paper, boxShadow: `0 0 0 1.5px ${K.paper}`, fontSize: 8.5, lineHeight: 1, flexShrink: 0 }}>✓</span>;
 }
 // Fake contributor profile page — the DM / Follow buttons are fake doors.
 function ContributorProfile({ c, onClose }: { c: Contributor; onClose: () => void }) {
@@ -291,11 +332,11 @@ function ContributorProfile({ c, onClose }: { c: Contributor; onClose: () => voi
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,18,14,.32)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 352, maxWidth: "92vw", background: K.paper, border: `1px solid ${K.rule}`, borderRadius: 4, boxShadow: "0 14px 44px rgba(0,0,0,.24)", overflow: "hidden" }}>
-        <div style={{ height: 50, background: c.color, position: "relative" }}>
+        <div style={{ height: 50, background: K.meta, position: "relative" }}>
           <button onClick={onClose} style={{ position: "absolute", top: 8, right: 9, border: "none", background: "rgba(255,255,255,.2)", color: K.paper, width: 22, height: 22, borderRadius: "50%", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ padding: "0 18px 16px" }}>
-          <span style={{ display: "inline-block", borderRadius: "50%", boxShadow: `0 0 0 3px ${K.paper}`, marginTop: -26 }}><Avatar init={c.init} color={c.color} size={52} /></span>
+          <span style={{ position: "relative", zIndex: 1, display: "inline-block", borderRadius: "50%", boxShadow: `0 0 0 3px ${K.paper}, 0 1px 5px rgba(0,0,0,.2)`, marginTop: -26 }}><Avatar init={c.init} color={c.color} size={52} /></span>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}><b style={{ fontSize: 16 }}>{c.name}</b>{c.verified && <VerifiedMark />}</div>
           <div style={{ fontFamily: mono, fontSize: 9, color: K.inkMute, marginTop: 2 }}>{c.field}</div>
           <div style={{ margin: "12px 0 11px" }}>
@@ -305,7 +346,7 @@ function ContributorProfile({ c, onClose }: { c: Contributor; onClose: () => voi
           <div style={{ display: "flex", gap: 7, marginBottom: 13 }}>
             {stat("sources sustained", c.sources)}
             {stat("graphs", c.graphs)}
-            {stat("verified", c.verified ? "yes" : "—")}
+            {stat("endorsements", c.endorsements)}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => fakeDoor(`Message ${c.name}`)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: mono, fontSize: 11, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", border: "none", borderRadius: 3, padding: "9px", cursor: "pointer", color: K.paper, background: K.secondary }}>✉ Message</button>
@@ -326,8 +367,9 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
   const topic = "What's moving the Dutch housing market?";
   // topic field has three variants: rest → hover (stretch + lift) → focused (active input + ring + dropdown)
   const expanded = hovered || editing;
-  // theme-tone yellow at rest (K.warn lightened); hover lifts to a paler yellow; only typing clears to white paper
-  const fieldBg = editing ? K.paper : hovered ? "#F8F2DF" : "#F3EACF";
+  // rest = #EBE4D2 (lighter warm sand); hover lifts a touch lighter;
+  // typing clears to white paper for a clean input surface.
+  const fieldBg = editing ? K.paper : hovered ? "#F2ECDE" : "#EBE4D2";
   const fieldBorder = editing ? K.secondary : hovered ? K.meta : K.rule;
   const fieldShadow = editing ? "0 0 0 3px rgba(28,58,94,.13)" : hovered ? "0 1px 8px rgba(0,0,0,.07)" : "none";
   const iconColor = editing ? K.secondary : hovered ? K.inkSoft : K.inkMute;
@@ -362,34 +404,41 @@ function Header({ source, onRun, running, dirty, onFullscreen, isFs, onTogglePan
         {editing && (
           <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: K.paper, border: `1px solid ${K.rule}`, borderRadius: 4, boxShadow: "0 14px 32px rgba(0,0,0,.18)", padding: "5px 0", zIndex: 50, maxHeight: 420, overflowY: "auto" }}>
             {/* ── current shared understanding of THIS graph + who built it ── */}
-            <div style={{ padding: "6px 14px 9px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+            <div style={{ margin: "3px 8px 6px", padding: "10px 12px", background: K.paperDeep, borderRadius: 5 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Current understanding · this graph</span>
-                {/* overlapping contributor avatars → fake profile pages (count after) */}
+                {/* overlapping contributor avatars → fake profile pages */}
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ display: "flex" }}>
                     {CONTRIBUTORS.map((c, i) => (
                       <button key={c.name} title={`${c.name} · open profile`} onMouseDown={(e) => e.preventDefault()} onClick={() => setProfile(c)}
                         onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.zIndex = "2"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.zIndex = "1"; }}
-                        style={{ marginLeft: i ? -8 : 0, padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "50%", boxShadow: `0 0 0 1.5px ${K.paper}`, position: "relative", zIndex: 1, transition: "transform .12s" }}>
-                        <Avatar init={c.init} color={c.color} size={22} />
+                        style={{ marginLeft: i ? -6 : 0, padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "50%", boxShadow: `0 0 0 1.5px ${K.paperDeep}`, position: "relative", zIndex: 1, transition: "transform .12s" }}>
+                        <Avatar init={c.init} color={c.color} size={17} />
                       </button>
                     ))}
                   </span>
-                  <span style={{ fontFamily: mono, fontSize: 7.5, color: K.inkMute }}>{CONTRIBUTORS.length} people</span>
+                  <span style={{ fontFamily: mono, fontSize: 7.5, color: K.inkMute }}>{CONTRIBUTORS.length} contributors</span>
                 </span>
               </div>
-              <div style={{ display: "flex", gap: 7, alignItems: "flex-start", marginBottom: 7 }}>
-                <span style={{ marginTop: 2, fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: K.primary, border: `1px solid ${K.primary}`, borderRadius: 3, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>{GRAPH_READ.dirChip}</span>
-                <span style={{ fontFamily: editorial, fontStyle: "italic", fontSize: 15, color: K.ink, lineHeight: 1.25 }}>{GRAPH_READ.title}</span>
+              {/* core conclusion — direction chip + the read, highlighted as ONE region
+                  (warm rust tint + rust rail) to raise contrast while staying in tone.
+                  Chip reverted to its outline state. */}
+              <div style={{ background: "rgba(90,110,72,.13)", borderRadius: 4, padding: "8px 8px 10px", marginBottom: 10 }}>
+                <span style={{ display: "inline-block", fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: K.good, border: `1px solid ${K.good}`, borderRadius: 3, padding: "1px 6px", marginBottom: 6 }}>{GRAPH_READ.dirChip}</span>
+                <div style={{ fontFamily: editorial, fontStyle: "italic", fontWeight: 600, fontSize: 16.5, color: K.ink, lineHeight: 1.25 }}>{GRAPH_READ.title}</div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {GRAPH_READ.insights.map((t) => (
-                  <span key={t} style={{ display: "flex", gap: 7, fontSize: 10.5, color: K.inkSoft, lineHeight: 1.35 }}>
-                    <span style={{ flexShrink: 0, marginTop: 5, width: 4, height: 4, borderRadius: 2, background: K.good }} />
-                    <span>{t}</span>
-                  </span>
+              {/* insights — larger, each with its data/direction justified to the right */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {GRAPH_READ.insights.map((ins) => (
+                  <div key={ins.text} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ display: "flex", gap: 7, fontSize: 13.5, color: K.inkSoft, lineHeight: 1.3, minWidth: 0 }}>
+                      <span style={{ flexShrink: 0, marginTop: 6, width: 4, height: 4, borderRadius: 2, background: K.good }} />
+                      <span>{ins.text}</span>
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: ins.dir === "up" ? K.good : ins.dir === "down" ? K.primary : K.meta, whiteSpace: "nowrap", flexShrink: 0 }}>{ins.dir === "up" ? "\u2191" : ins.dir === "down" ? "\u2193" : ""} {ins.val}</span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -465,12 +514,12 @@ function NavRail({ onZoom, onFit, k }: { onZoom: (f: number) => void; onFit: () 
   );
 }
 
-// ---- LegendBar (bottom of canvas, spread horizontally) --------------------
+// ---- LegendBar (left of canvas, vertical; order mirrors the lane stack top→bottom) --
 function LegendBar() {
-  const items: Array<[string, string]> = [["financing", K.secondary], ["demand", K.secondarySoft], ["supply", K.meta], ["policy", K.warn], ["regional", "#6D7162"], ["price", K.primary], ["private", K.good]];
+  const items: Array<[string, string]> = [["financing", K.secondary], ["demand", K.secondarySoft], ["supply", K.meta], ["policy", K.warn], ["regional", "#6D7162"], ["private", K.good], ["price", K.primary]];
   return (
-    <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap", background: "rgba(250,248,243,.45)", borderRadius: 3, padding: "6px 14px", zIndex: 5 }}>
-      {items.map(([l, c]) => <span key={l} style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: mono, fontSize: 9.5, color: K.inkSoft }}><span style={{ width: 9, height: 9, borderRadius: 1, background: c }} />{l}</span>)}
+    <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 9, background: "rgba(250,248,243,.5)", borderRadius: 3, padding: "11px 13px", zIndex: 5 }}>
+      {items.map(([l, c]) => <span key={l} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 9.5, color: K.inkSoft }}><span style={{ width: 9, height: 9, borderRadius: 1, background: c, flexShrink: 0 }} />{l}</span>)}
     </div>
   );
 }
@@ -717,12 +766,20 @@ function OutputColumn({ dist, dirty, advice, hasVars, factors, weights }: { dist
 
 // ---- on-canvas Output: the conclusions, drawn in the same card language as the
 // graph factors, grouped by level: L0 public read · L1 ranked hypotheses · L2 your call.
-const SCEN_META: Record<string, { color: string; note: string }> = {
-  shortage_dominates: { color: K.meta, note: "Structural shortage keeps lifting prices." },
-  financing_pressure: { color: K.secondary, note: "Rates & borrowing capacity set the pace." },
-  investor_window: { color: K.warn, note: "Investor sell-offs open a brief entry window." },
-  regional_divergence: { color: "#6D7162", note: "The national read hides big local gaps." },
-  user_constraint: { color: K.good, note: "Your own budget is the binding factor." },
+const SCEN_META: Record<string, { color: string; note: string; dir: "up" | "down" | "flat" }> = {
+  shortage_dominates: { color: K.meta, note: "Structural shortage keeps lifting prices.", dir: "up" },
+  financing_pressure: { color: K.secondary, note: "Rates & borrowing capacity set the pace.", dir: "up" },
+  investor_window: { color: K.warn, note: "Investor sell-offs open a brief entry window.", dir: "down" },
+  regional_divergence: { color: "#6D7162", note: "The national read hides big local gaps.", dir: "flat" },
+  user_constraint: { color: K.good, note: "Your own budget is the binding factor.", dir: "flat" },
+};
+// Indicators worth watching for each read — they'd move this hypothesis if they cross.
+const SCEN_IND: Record<string, string[]> = {
+  shortage_dominates: ["shortage", "permits"],
+  financing_pressure: ["rate", "price", "forecast"],
+  investor_window: ["investor"],
+  regional_divergence: ["demography"],
+  user_constraint: ["rate", "price"],
 };
 // A conclusion card — mirrors the graph factor card: accent rail · mono label · serif
 // figure · bold name · note · weight bar.
@@ -747,58 +804,193 @@ function OutcomeCard({ accent, label, name, value, pct, bar, note, hi, apex }: {
     </div>
   );
 }
-function OutputPanel({ dist, dirty, advice, hasVars, width = 300, rightOffset = 0 }: { dist: { w: Record<string, number> }; dirty: boolean; advice: { headline: string; body: string } | null; hasVars: boolean; width?: number; rightOffset?: number }) {
-  const tiny = { fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase" as const, color: K.meta };
-  const scen = SCENARIOS.map(([id, label]) => ({ id, label, w: dist.w[id] ?? 0 })).sort((a, b) => b.w - a.w);
+// NOTE: conclusions render as ON-CANVAS factor cards (see conclNodes in TraceWorkspace),
+// NOT as a separate side panel. The old OutputPanel side-panel was removed by decision
+// 2026-06-21 — do not reintroduce it.
+
+// ---- Read detail (when a conclusion/read node is selected): probability + meaning
+//      + the real factors that drive it (grounded in f.support). -----------------
+function ReadDetail({ scen, factors }: { scen: { id: string; label: string; w: number }; factors: CanvasFactor[] }) {
+  const drivers = factors.filter((f) => (f.support?.[scen.id] ?? 0) > 0).sort((a, b) => (b.support[scen.id] ?? 0) - (a.support[scen.id] ?? 0)).slice(0, 6);
+  const watch = INDICATORS.filter((i) => SCEN_IND[scen.id]?.includes(i.id));
   return (
-    <div style={{ position: "absolute", top: 0, right: rightOffset, bottom: 0, width, overflowY: "auto", background: K.paper, backgroundImage: "radial-gradient(rgba(207,200,182,.5) 0.9px, transparent 1px)", backgroundSize: "26px 26px", backgroundPosition: "13px 13px", padding: "12px 14px", zIndex: 3, transition: "right .12s", display: "flex", flexDirection: "column", gap: 7 }}>
-      <div style={{ ...tiny, display: "flex", justifyContent: "space-between" }}><span>Outcome conclusions</span>{dirty && <span style={{ color: K.warn }}>stale · run</span>}</div>
-
-      {/* L0 — the headline read (public) */}
-      <div style={{ ...tiny, color: K.primary }}>The read · public</div>
-      <OutcomeCard apex accent={K.primary} label="Net price read" value={`${ARROW[NET_READ.dir]} ${NET_READ.value}`} note={NET_READ.note} />
-
-      {/* L1 — competing hypotheses, ranked by support */}
-      <div style={{ ...tiny, marginTop: 3 }}>All possibilities · ranked</div>
-      {scen.map((s, i) => (
-        <OutcomeCard key={s.id} accent={SCEN_META[s.id]?.color ?? K.secondary}
-          label={i === 0 ? "Leading hypothesis" : `Hypothesis ${i + 1}`} name={s.label}
-          pct={Math.round(s.w * 100)} bar={s.w * 100} note={SCEN_META[s.id]?.note} hi={i === 0} />
-      ))}
-
-      {/* L2 — the personal call (private) */}
-      <div style={{ ...tiny, color: K.good, marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: "#F0F3EC", border: `1.3px dashed ${K.good}` }} />Your call · private</div>
-      {advice ? (
-        <div style={{ position: "relative", background: "rgba(90,110,72,.06)", border: `1px solid ${K.good}`, borderRadius: 2, padding: "7px 10px 8px 14px", overflow: "hidden", opacity: dirty ? 0.55 : 1 }}>
-          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: K.good }} />
-          <div style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 0.6, textTransform: "uppercase", color: K.good, marginBottom: 2 }}>Your decision</div>
-          <div style={{ fontFamily: editorial, fontStyle: "italic", fontWeight: 500, fontSize: 14, color: K.ink, lineHeight: 1.2, marginBottom: 3 }}>{advice.headline}</div>
-          <div style={{ fontFamily: sans, fontSize: 10, color: K.inkSoft, lineHeight: 1.4 }}>{advice.body}</div>
+    <div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 4, height: 15, background: K.primary, borderRadius: 1 }} /><b style={{ fontSize: 13.5 }}>{scen.label}</b></span>
+        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 21, color: K.primary }}>{Math.round(scen.w * 100)}%</span>
+      </div>
+      <div style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Hypothesis · relative support</div>
+      <div style={{ fontSize: 11.5, color: K.inkSoft, lineHeight: 1.45, margin: "7px 0 11px" }}>{SCEN_META[scen.id]?.note}</div>
+      <div style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta, marginBottom: 4 }}>Driven by ({drivers.length})</div>
+      {drivers.length ? drivers.map((f) => (
+        <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 11, padding: "3px 0", borderBottom: `1px solid ${K.ruleSoft}` }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}><span style={{ width: 6, height: 6, borderRadius: 2, background: CAT_COLOR[f.category], flexShrink: 0 }} /><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.label}</span></span>
+          <span style={{ fontFamily: mono, fontSize: 9, color: K.inkMute, flexShrink: 0 }}>s {(f.support[scen.id] ?? 0).toFixed(2)}</span>
         </div>
-      ) : (
-        <div style={{ border: `1px dashed ${K.good}`, borderRadius: 2, background: "rgba(90,110,72,.05)", padding: "8px 10px", fontFamily: sans, fontSize: 10, color: K.inkSoft, lineHeight: 1.4 }}>{hasVars ? "Run the protocol to generate your personal decision." : "Add your private variables, then run — to turn this read into a decision for you."}</div>
-      )}
+      )) : <Empty text="No mapped supporting factors yet." />}
+      {watch.length > 0 && (<>
+        <div style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta, margin: "10px 0 4px" }}>Watch to flip</div>
+        {watch.map((i) => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, padding: "2px 0", color: K.inkSoft }}><span>{i.label}</span><span style={{ fontFamily: mono, fontSize: 9, color: K.warn }}>{i.nowVal}{i.unit} → {i.lineVal}{i.unit}</span></div>)}
+      </>)}
     </div>
   );
 }
-
+// ---- Your-call detail (the personal decision node) -------------------------
+function CallDetail({ advice, active }: { advice: { headline: string; body: string }; active: VarKey[] }) {
+  return (
+    <div>
+      <div style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.good, display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: "#F0F3EC", border: `1.3px dashed ${K.good}` }} />Your call · private</div>
+      <div style={{ fontFamily: editorial, fontStyle: "italic", fontWeight: 500, fontSize: 16.5, color: K.ink, lineHeight: 1.2, marginBottom: 7 }}>{advice.headline}</div>
+      <div style={{ fontSize: 11.5, color: K.inkSoft, lineHeight: 1.5 }}>{advice.body}</div>
+      <div style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta, margin: "11px 0 4px" }}>Conditioned on</div>
+      {active.length ? active.map((k) => { const d = PERSONAL_VARS.find((x) => x.id === k); return <div key={k} style={{ fontSize: 11, padding: "2px 0", color: K.inkSoft }}>→ {d?.label ?? k}</div>; }) : <div style={{ fontSize: 10.5, color: K.inkMute, lineHeight: 1.4 }}>No private variables added yet — add some to personalise this call.</div>}
+    </div>
+  );
+}
+// Evidence-type taxonomy → short human labels (mirrors the engine's classification).
+const STATUS_LABEL: Record<string, string> = {
+  methodology_or_definition: "definition",
+  model_estimate: "model estimate",
+  forecast_or_expectation: "forecast",
+  policy_target_or_proposal: "policy target",
+  analysis_or_news_claim: "news / analysis",
+  risk_warning_or_scenario: "risk / scenario",
+  review_needed: "unclassified",
+};
+// top_metrics lines are "**name** | value | detail" (or a "## heading" to skip).
+function parseMetric(line: string): { name: string; value: string; detail?: string } | null {
+  const t = (line || "").trim();
+  if (!t || t.startsWith("#")) return null;
+  const parts = t.split("|").map((s) => s.replace(/\*\*/g, "").trim());
+  if (parts.length === 1) return parts[0] ? { name: parts[0], value: "" } : null;
+  return { name: parts[0], value: parts[1], detail: parts.slice(2).join(" · ") || undefined };
+}
+function MetaChip({ text, color }: { text: string; color?: string }) {
+  return <span style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 0.3, color: color ?? K.inkSoft, background: color ? `${color}1A` : K.paperDeep, border: `1px solid ${color ? `${color}55` : K.rule}`, borderRadius: 7, padding: "1px 7px", whiteSpace: "nowrap" }}>{text}</span>;
+}
+function priceDirOf(dir?: string): { a: string; t: string; c: string } {
+  const d = (dir || "").toLowerCase();
+  if (/support|up|rais|raise|widen/.test(d)) return { a: "↑", t: "lifts price", c: K.good };
+  if (/down|lower|eas|cool|shrink/.test(d)) return { a: "↓", t: "eases price", c: K.primary };
+  if (/confound/.test(d)) return { a: "↮", t: "confounds the read", c: K.meta };
+  if (/amplif|both|reflex/.test(d)) return { a: "↕", t: "amplifies both ways", c: K.meta };
+  if (/conditioning/.test(d)) return { a: "→", t: "conditions the read", c: K.good };
+  if (/contested|band|not_settled/.test(d)) return { a: "?", t: "direction contested", c: K.warn };
+  return { a: "→", t: "direction not classified", c: K.inkMute };
+}
+// Bespoke inspector for the Trace Core Protocol node — explains the engine at the
+// product-narrative level only. Deliberately conceptual: it describes the SHAPE of
+// what the engine does, never the scoring method / internals (proprietary).
+function ProtocolDetail() {
+  const sec = { fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase" as const, color: K.meta, margin: "13px 0 6px" };
+  const steps: Array<[string, string]> = [
+    ["Ground", "Facts, sources and claims enter as typed, provenance-bearing evidence — every number traces back to where it came from."],
+    ["Frame", "Candidate market-states and optional expert structure set the question up as competing explanations, not one answer."],
+    ["Weigh", "The engine scores how strongly each factor backs each scenario and forms a distribution across them — the same inputs always give the same result."],
+    ["Adjudicate", "Claims resolve as settled or contested; coverage gaps and the next decisive test are surfaced rather than hidden."],
+    ["Condition", "Your private variables re-weight the shared structure for you — changing the read, never the underlying evidence."],
+  ];
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ width: 4, height: 15, background: K.secondary, borderRadius: 1, flexShrink: 0 }} /><b style={{ fontSize: 13.5, lineHeight: 1.2 }}>Trace Core Protocol</b></span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}><span style={{ width: 0, height: 0, borderTop: "4px solid transparent", borderBottom: "4px solid transparent", borderLeft: `6px solid ${K.secondary}` }} /><span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase", color: K.secondary }}>engine</span></span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        <MetaChip text="deterministic" color={K.good} />
+        <MetaChip text="auditable" />
+        <MetaChip text="provenance-bearing" />
+      </div>
+      <div style={{ fontSize: 11.5, color: K.inkSoft, lineHeight: 1.45, margin: "9px 0 0" }}>
+        The causal-reasoning layer behind every read on this canvas. It turns sourced evidence and expert structure into an auditable, repeatable distribution — a read you can trace, not a narrative that was generated. The same inputs always produce the same answer.
+      </div>
+      <div style={sec}>How it works</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {steps.map(([t, d], i) => (
+          <div key={t} style={{ display: "flex", gap: 8 }}>
+            <span style={{ flexShrink: 0, fontFamily: mono, fontSize: 9, fontWeight: 600, color: K.secondary, width: 13 }}>{i + 1}</span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: "block", fontFamily: mono, fontSize: 9, letterSpacing: 0.4, textTransform: "uppercase", color: K.ink }}>{t}</span>
+              <span style={{ display: "block", fontSize: 11.5, color: K.inkSoft, lineHeight: 1.4, marginTop: 1 }}>{d}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 13, padding: "8px 10px", background: K.paperDeep, borderRadius: 4, fontFamily: mono, fontSize: 9, color: K.inkMute, lineHeight: 1.5 }}>
+        The scoring method itself is proprietary. The cockpit shows the read, its evidence, and the trace that produced it — never the internals.
+      </div>
+    </div>
+  );
+}
 function NodeInvestigation({ f, weight }: { f: CanvasFactor; weight: number }) {
   const catName: Record<Category, string> = { financing: "Financing", demand: "Demand", supply: "Supply", policy: "Policy", regional: "Regional", personal: "Personal", outcome: "Outcome" };
   const hasWeight = f.weightReady !== false && Object.keys(f.support).length > 0;
-  const Row = ({ k, v }: { k: string; v: React.ReactNode }) => <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, padding: "3px 0", borderBottom: `1px solid ${K.ruleSoft}` }}><span style={{ color: K.inkMute, fontFamily: mono, fontSize: 9 }}>{k}</span><span style={{ color: K.ink }}>{v}</span></div>;
+  const pd = priceDirOf(f.directionOnPrices);
+  const metrics = (f.metrics || []).map(parseMetric).filter((m): m is { name: string; value: string; detail?: string } => !!m);
+  const shownMetrics = metrics.slice(0, 5);
+  const moreMetrics = Math.max(0, (f.metricCount ?? metrics.length) - shownMetrics.length);
+  const statusEntries = Object.entries(f.evidenceStatus || {}).sort((a, b) => b[1] - a[1]);
+  const sources = f.sources || [];
+  const sec = { fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase" as const, color: K.meta, margin: "12px 0 6px" };
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 4, height: 14, background: CAT_COLOR[f.category], borderRadius: 1 }} /><b style={{ fontSize: 13 }}>{f.label}</b></span>
-        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 18 }}>{hasWeight ? `${Math.round(weight * 100)}%` : "w —"}</span>
+      {/* header: category rail · name · Pearl weight */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ width: 4, height: 15, background: CAT_COLOR[f.category], borderRadius: 1, flexShrink: 0 }} /><b style={{ fontSize: 13.5, lineHeight: 1.2 }}>{f.label}</b></span>
+        <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 18, flexShrink: 0 }} title="Pearl-conditioned weight">{hasWeight ? `${Math.round(weight * 100)}%` : "w —"}</span>
       </div>
-      <Row k="category" v={catName[f.category]} />
-      <Row k="current" v={<>{f.value} {f.trend}</>} />
-      <Row k="evidence" v={`${f.evidenceCount} items · ${f.credibility}`} />
-      <Row k="status" v={<span style={{ color: f.contested ? K.warn : K.good }}>{f.contested ? "contested" : "settled"}</span>} />
-      {f.mechanism && <div style={{ fontSize: 11, color: K.inkSoft, margin: "7px 0", lineHeight: 1.4 }}>{f.mechanism}</div>}
+      {/* read-at-a-glance chips: category · price direction · settled/contested */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        <MetaChip text={catName[f.category]} />
+        <MetaChip text={`${pd.a} ${pd.t}`} color={pd.c} />
+        <MetaChip text={f.contested ? "contested" : "settled"} color={f.contested ? K.warn : K.good} />
+      </div>
+      {(f.mechanism || f.summary) && <div style={{ fontSize: 11.5, color: K.inkSoft, lineHeight: 1.4, margin: "8px 0 0" }}>{f.mechanism || f.summary}</div>}
+
+      {/* WHAT THE DATA SAYS — the extracted metric data-points */}
+      {shownMetrics.length > 0 && (<>
+        <div style={sec}>What the data says</div>
+        {shownMetrics.map((m, i) => (
+          <div key={i} title={m.detail} style={{ padding: "4px 0", borderBottom: `1px solid ${K.ruleSoft}` }}>
+            <div style={{ fontFamily: mono, fontSize: 8, letterSpacing: 0.3, textTransform: "uppercase", color: K.inkMute }}>{m.name}</div>
+            {m.value && <div style={{ fontSize: 12.5, color: K.ink, lineHeight: 1.3, marginTop: 1 }}>{m.value}</div>}
+          </div>
+        ))}
+        {moreMetrics > 0 && <div style={{ fontFamily: mono, fontSize: 8.5, color: K.inkMute, marginTop: 5 }}>+{moreMetrics} more data points</div>}
+      </>)}
+
+      {/* CONFIDENCE & EVIDENCE — how solid, and of what kind */}
+      <div style={sec}>Confidence &amp; evidence</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginBottom: 6 }}>
+        {f.avgConfidence != null && <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 17, color: K.ink, lineHeight: 1 }}>{f.avgConfidence}%</span>}
+        <span style={{ fontFamily: mono, fontSize: 8.5, color: K.inkMute, letterSpacing: 0.2 }}>{f.avgConfidence != null ? "avg confidence · " : ""}{f.metricCount ?? metrics.length} data points · {f.sourceCount ?? sources.length} sources</span>
+      </div>
+      {statusEntries.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {statusEntries.map(([s, n]) => <MetaChip key={s} text={`${STATUS_LABEL[s] || s} · ${n}`} />)}
+        </div>
+      )}
+
+      {/* SOURCES — the actual documents (provenance-tagged) */}
+      {sources.length > 0 && (<>
+        <div style={sec}>Sources</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {sources.slice(0, 4).map((s, i) => (
+            <a key={i} href={s.url || undefined} target="_blank" rel="noopener" style={{ display: "block", textDecoration: "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 1 }}>
+                <span style={{ fontFamily: mono, fontSize: 7.5, color: K.inkMute }}>{s.domain}</span>
+                {s.origin === "cala" && <span style={{ fontFamily: serif, fontSize: 7.5, lineHeight: 1, color: K.meta, background: "rgba(184,144,46,.18)", border: "1px solid rgba(184,144,46,.5)", borderRadius: 6, padding: "0 5px" }}>cala</span>}
+              </div>
+              <div style={{ fontSize: 11, color: K.secondary, lineHeight: 1.3 }}>{s.label} ↗</div>
+            </a>
+          ))}
+          {sources.length > 4 && <div style={{ fontFamily: mono, fontSize: 8.5, color: K.inkMute }}>+{sources.length - 4} more sources</div>}
+        </div>
+      </>)}
+
+      {/* SUPPORTS SCENARIOS — the engine's support distribution */}
       {Object.keys(f.support).length > 0 && (<>
-        <div style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 1, textTransform: "uppercase", color: K.meta, margin: "8px 0 4px" }}>Supports scenarios</div>
+        <div style={sec}>Supports scenarios</div>
         {Object.entries(f.support).sort((a, b) => b[1] - a[1]).map(([c, s]) => (
           <div key={c} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "2px 0" }}><span>{SCEN_LABEL[c] || c}</span><span style={{ fontFamily: mono, color: K.inkMute }}>s {s.toFixed(2)}</span></div>
         ))}
@@ -809,14 +1001,14 @@ function NodeInvestigation({ f, weight }: { f: CanvasFactor; weight: number }) {
 
 // ---- BottomDock (indicators to watch) --------------------------------------
 const ARROW = { up: "↑", down: "↓", flat: "→", neutral: "→" } as const;
-const PRICE_COLOR = { up: K.primary, down: K.secondary, neutral: K.meta } as const;
+const PRICE_COLOR = { up: K.good, down: K.primary, neutral: K.meta } as const;   // rising = green, falling = red
 
 // cala wordmark — served from app/public/cala_logo.png.
 function CalaMark({ height = 15 }: { height?: number }) {
   return <img src="/cala_logo.png" alt="cala" style={{ height, width: "auto", display: "block" }} />;
 }
 
-function BottomDock({ onClose }: { onClose: () => void }) {
+function BottomDock({ dist }: { dist: { w: Record<string, number> } }) {
   const [hoverInd, setHoverInd] = useState<string | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; left: number } | null>(null);
@@ -824,14 +1016,18 @@ function BottomDock({ onClose }: { onClose: () => void }) {
   const priceColor = PRICE_COLOR;
   const tiny = { fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase" as const, color: K.meta };
   const sorted = [...INDICATORS].sort((a, b) => b.priceStrength - a.priceStrength);
-  const ups = sorted.filter((i) => i.priceSignal === "up"), downs = sorted.filter((i) => i.priceSignal === "down");
-  const upSum = ups.reduce((s, i) => s + i.priceStrength, 0), downSum = downs.reduce((s, i) => s + i.priceStrength, 0);
-  const total = upSum + downSum || 1, upPct = Math.round((upSum / total) * 100);
-  const seg = (i: typeof INDICATORS[number], color: string) => {
-    const hot = hoverInd === i.id;
-    return <div key={i.id} title={`${i.label}: pushes price ${i.priceSignal} · strength ${Math.round(i.priceStrength * 100)}%`}
-      onMouseEnter={() => setHoverInd(i.id)} onMouseLeave={() => setHoverInd(null)}
-      style={{ width: `${(i.priceStrength / total) * 100}%`, background: color, opacity: hoverInd && !hot ? 0.35 : 1, borderRight: `1px solid ${K.paper}`, cursor: "default", transition: "opacity .15s" }} />;
+  // Force balance is derived from the ENGINE scenario distribution (dist.w) by each
+  // scenario's price direction — NOT the hand-set indicator strengths. Flat scenarios
+  // (no clear up/down push) are excluded from the up-vs-down balance.
+  const fb = SCENARIOS.map(([id, label]) => ({ id, label, w: dist.w[id] ?? 0, dir: SCEN_META[id]?.dir }))
+    .filter((s) => s.dir === "up" || s.dir === "down");
+  const upScens = fb.filter((s) => s.dir === "up"), downScens = fb.filter((s) => s.dir === "down");
+  const upSum = upScens.reduce((a, s) => a + s.w, 0), downSum = downScens.reduce((a, s) => a + s.w, 0);
+  const fbTotal = upSum + downSum || 1, upPct = Math.round((upSum / fbTotal) * 100);
+  // hovering an indicator highlights the scenario segments it feeds (SCEN_IND reverse lookup).
+  const fbSeg = (s: { id: string; label: string; w: number }, color: string) => {
+    const related = !hoverInd || (SCEN_IND[s.id]?.includes(hoverInd) ?? false);
+    return <div key={s.id} title={`${s.label}: ${Math.round((s.w / fbTotal) * 100)}% of the up/down read`} style={{ width: `${(s.w / fbTotal) * 100}%`, background: color, opacity: related ? 1 : 0.28, borderRight: `1px solid ${K.paper}`, transition: "opacity .15s" }} />;
   };
   return (
     <div style={{ flexShrink: 0, borderTop: `1px solid ${K.rule}`, padding: "7px 16px 8px", background: K.paper }}>
@@ -840,17 +1036,16 @@ function BottomDock({ onClose }: { onClose: () => void }) {
         <span style={tiny}>Indicators to watch</span>
         <span style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={tiny}>Force balance</span>
+            <span style={tiny} title="Share of the conditioned market read pushing price up vs down — from the engine scenario distribution">Force balance</span>
             <span style={{ display: "inline-flex", width: 120, height: 5, borderRadius: 3, overflow: "hidden", border: `1px solid ${K.rule}`, alignSelf: "center" }}>
-              {ups.map((i) => seg(i, K.primary))}{downs.map((i) => seg(i, K.secondary))}
+              {upScens.map((s) => fbSeg(s, K.good))}{downScens.map((s) => fbSeg(s, K.primary))}
             </span>
-            <span style={{ fontFamily: mono, fontSize: 9, whiteSpace: "nowrap" }}><span style={{ color: K.primary }}>↑ {upPct}%</span> <span style={{ color: K.inkMute }}>vs</span> <span style={{ color: K.secondary }}>↓ {100 - upPct}%</span></span>
+            <span style={{ fontFamily: mono, fontSize: 9, whiteSpace: "nowrap" }}><span style={{ color: K.good }}>↑ {upPct}%</span> <span style={{ color: K.inkMute }}>vs</span> <span style={{ color: K.primary }}>↓ {100 - upPct}%</span></span>
           </span>
           <button title="Track a variable of your own" onClick={() => alert("Add your own indicator to track — coming soon")}
             style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: mono, fontSize: 8.5, letterSpacing: 0.5, textTransform: "uppercase", color: K.secondary, background: "rgba(28,58,94,.04)", border: `1px dashed ${K.secondary}`, borderRadius: 2, padding: "3px 8px", cursor: "pointer", whiteSpace: "nowrap" }}>
             <span style={{ fontSize: 12, lineHeight: 1 }}>＋</span> Add indicator
           </button>
-          <button onClick={onClose} title="Close indicators" style={{ border: "none", background: "none", color: K.inkMute, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>✕</button>
         </span>
       </div>
       {/* ── indicators as distance-to-trigger gauges: now-marker(○) · trigger-tick(│) · gap=how far ── */}
@@ -865,35 +1060,48 @@ function BottomDock({ onClose }: { onClose: () => void }) {
           const clamp = (x: number) => Math.max(0, Math.min(1, x));
           const mk = clamp((ind.nowVal - ind.lo) / (ind.hi - ind.lo)), tk = clamp((ind.lineVal - ind.lo) / (ind.hi - ind.lo));
           const fmt = (v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${ind.unit}`;
-          const dist = Math.abs(ind.nowVal - ind.lineVal), gapL = Math.min(mk, tk), gapW = Math.abs(mk - tk);
+          const unitFull = ind.unit === "k/q" ? "thousand per quarter" : ind.unit === "k" ? "thousand" : ind.unit === "%" ? "percent" : ind.unit === "pp" ? "percentage points" : ind.unit;
+          const toLine = Math.abs(ind.nowVal - ind.lineVal), gapL = Math.min(mk, tk), gapW = Math.abs(mk - tk);
           const psc = priceColor[ind.priceSignal], fill = Math.round(ind.priceStrength * 3);
-          const ddc = ind.deltaDir === "up" ? K.primary : ind.deltaDir === "down" ? K.secondary : K.inkMute;
+          const ddc = ind.deltaDir === "up" ? K.good : ind.deltaDir === "down" ? K.primary : K.inkMute;
           return (
             <div key={ind.id} title={ind.note} onMouseEnter={() => setHoverInd(ind.id)} onMouseLeave={() => setHoverInd(null)}
               style={{ flex: "1 1 0", minWidth: 158, border: `1px solid ${hot ? K.secondary : K.rule}`, borderRadius: 2, padding: "9px 11px 10px", background: hot ? "rgba(28,58,94,.035)" : K.paper, display: "flex", flexDirection: "column", gap: 7, transition: "border-color .15s, background .15s" }}>
-              {/* name · price direction + quantified strength */}
+              {/* name · effect on PRICE — labelled, derived from the LEVEL (not the change) */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                   <span style={{ width: 6, height: 6, borderRadius: 6, background: dot[ind.state], flexShrink: 0 }} />
                   <b style={{ fontSize: 11.5, lineHeight: 1.15 }}>{ind.label}</b>
-                  <span title="change vs prior period" style={{ fontFamily: mono, fontSize: 8, fontWeight: 600, color: ddc, whiteSpace: "nowrap", flexShrink: 0 }}>{ARROW[ind.deltaDir]} {ind.delta}</span>
                 </span>
-                <span style={{ display: "flex", alignItems: "flex-end", gap: 3, flexShrink: 0 }} title={`pushes price ${ind.priceSignal} · strength ${Math.round(ind.priceStrength * 100)}%`}>
+                <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }} title={`its level pushes price ${ind.priceSignal} · strength ${Math.round(ind.priceStrength * 100)}%`}>
+                  <span style={{ fontFamily: mono, fontSize: 7, letterSpacing: 0.5, textTransform: "uppercase", color: K.inkMute }}>price</span>
                   <span style={{ fontFamily: mono, fontSize: 12, color: psc, lineHeight: 1 }}>{ARROW[ind.priceSignal]}</span>
                   <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 1.5, height: 11 }}>{[0, 1, 2].map((i) => <span key={i} style={{ width: 3, height: 3 + i * 3.5, borderRadius: 0.5, background: i < fill ? psc : K.ruleSoft }} />)}</span>
                 </span>
               </div>
-              {/* gauge: now-marker(○) · trigger-tick(│) · gap = how far to the line */}
-              <div style={{ position: "relative", height: 14, display: "flex", alignItems: "center" }}>
-                <div style={{ position: "absolute", left: 0, right: 0, height: 4, borderRadius: 2, background: K.paperDeep }} />
-                <div style={{ position: "absolute", left: `${gapL * 100}%`, width: `${gapW * 100}%`, height: 4, borderRadius: 2, background: "rgba(184,144,46,.32)" }} />
-                <div style={{ position: "absolute", left: `${tk * 100}%`, transform: "translateX(-50%)", width: 2, height: 13, borderRadius: 1, background: K.ink }} />
-                <div style={{ position: "absolute", left: `${mk * 100}%`, transform: "translateX(-50%)", width: 10, height: 10, borderRadius: 10, background: K.paper, border: `2px solid ${psc}` }} />
+              {/* the metric reading: current VALUE + its recent CHANGE (delta) — distinct from
+                  the price effect above. A high level can still push price up while the value
+                  is falling (e.g. net migration 87k, ↓16k = cooling but still adding demand). */}
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <b title={`${ind.nowVal} ${unitFull}`} style={{ fontFamily: mono, fontSize: 15, color: K.ink, lineHeight: 1 }}>{fmt(ind.nowVal)}</b>
+                <span title="change vs prior period" style={{ fontFamily: mono, fontSize: 9, fontWeight: 600, color: K.paper, background: ddc, borderRadius: 8, padding: "2px 6px", whiteSpace: "nowrap", lineHeight: 1 }}>Δ {ind.delta} {ARROW[ind.deltaDir]}</span>
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 4, fontFamily: mono, fontSize: 8 }}>
-                <span style={{ color: K.inkSoft }}>now <b style={{ color: K.ink }}>{fmt(ind.nowVal)}</b></span>
-                <span style={{ color: K.warn, fontWeight: 600 }}>{fmt(dist)} to line</span>
-                <span style={{ color: K.inkMute }}>line {fmt(ind.lineVal)}</span>
+              {/* gauge cluster — labels live on separate rows (above / below the track) so they
+                  can never overlap: delta-to-go ABOVE, centred in the gap; trigger value BELOW,
+                  under its tick and emphasized as the anchor. Positions clamp off the edges. */}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <div style={{ position: "relative", height: 11, fontFamily: mono, fontSize: 7.5 }}>
+                  <span style={{ position: "absolute", left: `${Math.max(15, Math.min(85, (gapL + gapW / 2) * 100))}%`, transform: "translateX(-50%)", color: K.warn, fontWeight: 600, whiteSpace: "nowrap" }}>{fmt(toLine)} to trigger</span>
+                </div>
+                <div style={{ position: "relative", height: 14, display: "flex", alignItems: "center" }}>
+                  <div style={{ position: "absolute", left: 0, right: 0, height: 4, borderRadius: 2, background: K.paperDeep }} />
+                  <div style={{ position: "absolute", left: `${gapL * 100}%`, width: `${gapW * 100}%`, height: 4, borderRadius: 2, background: "rgba(184,144,46,.32)" }} />
+                  <div style={{ position: "absolute", left: `${tk * 100}%`, transform: "translateX(-50%)", width: 2, height: 13, borderRadius: 1, background: K.ink }} />
+                  <div style={{ position: "absolute", left: `${mk * 100}%`, transform: "translateX(-50%)", width: 10, height: 10, borderRadius: 10, background: K.paper, border: `2px solid ${psc}` }} />
+                </div>
+                <div style={{ position: "relative", height: 13, fontFamily: mono, fontSize: 9 }}>
+                  <span style={{ position: "absolute", left: `${Math.max(8, Math.min(92, tk * 100))}%`, transform: "translateX(-50%)", whiteSpace: "nowrap" }}><span style={{ color: K.inkMute, fontSize: 7 }}>trigger </span><b style={{ color: K.ink }}>{fmt(ind.lineVal)}</b></span>
+                </div>
               </div>
               <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, fontFamily: mono, fontSize: 7.5, color: K.inkMute, letterSpacing: 0.2 }}>
                 <span>src · {ind.source}</span>
@@ -903,7 +1111,7 @@ function BottomDock({ onClose }: { onClose: () => void }) {
           );
         })}
       </div>
-      <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap", fontFamily: mono, fontSize: 9, color: K.inkSoft, letterSpacing: 0.2 }}>
+      <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap", fontFamily: mono, fontSize: 9, color: K.inkMute, letterSpacing: 0.2 }}>
         <span>Values from the</span>
         <span style={{ display: "inline-flex", alignItems: "center" }}><CalaMark height={12} />-derived</span>
         <span>timeseries knowledge graph · 2026 June</span>
@@ -913,11 +1121,11 @@ function BottomDock({ onClose }: { onClose: () => void }) {
 }
 
 // ---- shared small components -----------------------------------------------
-function FoldSection({ title, defaultOpen, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+function FoldSection({ title, defaultOpen, children, tone }: { title: string; defaultOpen?: boolean; children: React.ReactNode; tone?: string }) {
   const [open, setOpen] = useState(!!defaultOpen);
   return (
     <div style={{ border: `1px solid ${K.rule}`, borderRadius: 2, overflow: "hidden" }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ width: "100%", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 9px", background: K.secondary, color: K.paper, border: "none", cursor: "pointer", fontFamily: mono, fontSize: 9, letterSpacing: 1, textTransform: "uppercase" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ width: "100%", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 9px", background: tone ?? K.secondary, color: K.paper, border: "none", cursor: "pointer", fontFamily: mono, fontSize: 9, letterSpacing: 1, textTransform: "uppercase" }}>
         <span>{title}</span><span>{open ? "▾" : "▸"}</span>
       </button>
       {open && <div style={{ padding: "10px 11px" }}>{children}</div>}

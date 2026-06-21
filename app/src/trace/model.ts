@@ -23,6 +23,8 @@ export const CAT_COLOR: Record<Category, string> = {
   outcome: K.primary,
 };
 export const GRID = 26, CW = 198, CH = 88, VBW = 2200, VBH = 1040;
+export const PROTOTYPE_W = 238, PROTOTYPE_H = 118;
+export const PROTOCOL_W = 220, PROTOCOL_H = 78;
 export const snap = (v: number) => Math.round(v / GRID) * GRID;
 
 export interface CanvasFactor {
@@ -31,18 +33,33 @@ export interface CanvasFactor {
   credibility: "primary" | "mixed"; contested: boolean;
   level?: number;
   parent?: string | null;
-  role?: "root" | "driver" | "subfactor" | "outcome";
+  role?: "root" | "driver" | "subfactor" | "outcome" | "protocol";
   group?: FactorGroup;
   weightReady?: boolean;
   mechanism?: string;
   support: Record<string, number>;        // s(f → candidate)
   x: number; y: number;
   evidence?: { claim: string; source: string; url: string } | null;
+  // --- rich inspector data (carried straight from the factor_research node) ---
+  summary?: string;
+  directionOnPrices?: string;
+  metrics?: string[];                      // top_metrics: "name | value | detail" lines
+  sources?: Array<{ label: string; url: string; domain: string; origin: string }>;
+  evidenceStatus?: Record<string, number>; // evidence_status_rollup: type → count
+  avgConfidence?: number | null;           // average_probability_pct
+  dominantStatus?: string;
+  metricCount?: number;
+  sourceCount?: number;
 }
 export interface CanvasEdge {
   from: string; to: string; strength: number; sign: 1 | -1 | 0;
   relation?: "contains" | "causal" | "contested" | "conditioning" | "confounder" | "feedback";
   mechanism?: string;
+}
+export function nodeSize(node: Pick<CanvasFactor, "id" | "role">) {
+  if (node.role === "protocol") return { w: PROTOCOL_W, h: PROTOCOL_H };
+  if (node.id === "structural_shortage" || node.id === "housing_shortage") return { w: PROTOTYPE_W, h: PROTOTYPE_H };
+  return { w: CW, h: CH };
 }
 export interface Vars { price: number; deposit: number; ceil: number; rate: number; hor: number; flex: boolean; }
 export type VarKey = "price" | "deposit" | "ceil" | "rate" | "hor" | "flex";
@@ -103,7 +120,9 @@ export const fmtVar = (d: PersonalVarDef, v: Vars): string => {
 };
 
 export interface PersonalNode { id: string; key: VarKey; label: string; value: string; x: number; y: number; }
-export const PV_X = 390;
+// Private gutter sits in the bottom 'personal' lane, left of personal_decision_subdrivers
+// (COL.DRV=1144, y≈2250). Two columns × N rows, on the dot grid.
+export const PV_X = 600;
 /** Build the private-variable node + edge layer for the active variables. */
 export function personalLayer(active: VarKey[], vars: Vars): { nodes: PersonalNode[]; edges: CanvasEdge[] } {
   const defs = PERSONAL_VARS.filter((d) => active.includes(d.id));
@@ -112,8 +131,8 @@ export function personalLayer(active: VarKey[], vars: Vars): { nodes: PersonalNo
     key: d.id,
     label: d.short,
     value: fmtVar(d, vars),
-    x: PV_X + (index % 2) * 132,
-    y: 930 + Math.floor(index / 2) * 52,
+    x: PV_X + (index % 2) * 200,
+    y: 2160 + Math.floor(index / 2) * 90,
   }));
   const edges: CanvasEdge[] = defs.flatMap((d) => d.conditions.map((t) => ({ from: `pv_${d.id}`, to: t, strength: 0.5, sign: 1 as const, relation: "conditioning" as const })));
   return { nodes, edges };
@@ -150,7 +169,7 @@ export const INDICATORS: Indicator[] = [
   { id: "demography", label: "Net migration", nowVal: 87, lineVal: 0, lo: 0, hi: 120, unit: "k", delta: "16k", deltaDir: "down", priceSignal: "up", priceStrength: 0.5, state: "watch", source: "CBS", viaCala: true, note: "Population growth is all migration; natural change already negative." },
   { id: "permits", label: "Building permits", nowVal: 24.2, lineVal: 25, lo: 20, hi: 30, unit: "k/q", delta: "1.5k", deltaDir: "up", priceSignal: "down", priceStrength: 0.45, state: "watch", source: "CBS", viaCala: true, note: "Future supply; sustained >25k/q starts to close the gap." },
   { id: "investor", label: "Investor net flow", nowVal: -8.6, lineVal: 0, lo: -18, hi: 6, unit: "k", delta: "1.2k", deltaDir: "down", priceSignal: "down", priceStrength: 0.4, state: "ok", source: "Kadaster", viaCala: true, note: "Net buy−sell; crossing back above 0 closes the supply window." },
-  { id: "forecast", label: "Bank consensus ’26", nowVal: 4.0, lineVal: 0, lo: -2, hi: 8, unit: "%", delta: "3.5pp", deltaDir: "down", priceSignal: "up", priceStrength: 0.5, state: "ok", source: "ABN · Rabobank · ING · DNB", viaCala: false, note: "Consensus forecast; turning negative flips the read to caution." },
+  { id: "forecast", label: "Bank forecast ’26", nowVal: 4.0, lineVal: 0, lo: -2, hi: 8, unit: "%", delta: "3.5pp", deltaDir: "down", priceSignal: "up", priceStrength: 0.5, state: "ok", source: "ABN · Rabobank · ING · DNB", viaCala: false, note: "Banks' consensus house-price growth forecast for 2026; turning negative flips the read to caution." },
 ];
 // overall price conclusion synthesized from the indicators above
 export const NET_READ = {
@@ -267,7 +286,8 @@ export function personalAdvice(v: Vars, active: VarKey[], dist: Record<string, n
 }
 
 export function curve(a: CanvasFactor, b: CanvasFactor) {
-  const ax = a.x + CW, ay = a.y + CH / 2, bx = b.x, by = b.y + CH / 2, dx = bx - ax;
+  const aSize = nodeSize(a), bSize = nodeSize(b);
+  const ax = a.x + aSize.w, ay = a.y + aSize.h / 2, bx = b.x, by = b.y + bSize.h / 2, dx = bx - ax;
   return { d: `M ${ax} ${ay} C ${ax + dx * 0.4} ${ay}, ${bx - dx * 0.4} ${by}, ${bx} ${by}`, mx: (ax + bx) / 2, my: (ay + by) / 2 };
 }
 // EXTEND: enrich with real per-factor → candidate support once the engine exposes it.
@@ -278,7 +298,7 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
   const displayMetric = (f: { top_metrics?: string[]; summary?: string }) => {
     const metric = (f.top_metrics || []).find((m) => {
       const s = cleanText(m);
-      return s && /\d/.test(s) && !/^below is\b/i.test(s);
+      return s && /\d/.test(s) && !/^below is\b/i.test(s) && !/^(netherlands|latest|dutch)\b/i.test(s);
     });
     const text = metric || f.summary || "see evidence";
     return cleanText(text).slice(0, 34);
@@ -298,45 +318,57 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
   };
   const labelOf = (f: { id: string; label: string }) =>
     f.id === "supply_pipeline_subdrivers" ? "Housing permits / pipeline" : f.label;
+  // ── Layout grid (graphic-designer rules; everything pins to the GRID dots) ──
+  // Columns flow cause → effect, left → right, indexed by causal depth so that ALL
+  // drivers land in one aligned column (DRV) that fans into the outcome. Column
+  // pitch = 11·GRID (286), sibling row pitch = 5·GRID (130) — both multiples of the
+  // dot grid, so spacing reads as uniform. Groups are horizontal lanes stacked top
+  // → bottom; within a lane, subfactors right-align toward their driver.
+  const COL = { L4: 0, L3: 286, L2: 572, L1: 858, DRV: 1144, PROTOCOL: 1430, MKT: 1716, OUT: 2002 };
   const layout: Record<string, { x: number; y: number; role?: CanvasFactor["role"]; group?: FactorGroup }> = {
-    market_state: { x: 1530, y: 514, role: "root", group: "outcome" },
+    // ── lane: affordability → financing_pressure ──
+    mortgage_lending_standards_outlook: { x: COL.L2, y: 0, role: "subfactor", group: "affordability" },
+    income_borrowing_capacity: { x: COL.L2, y: 130, role: "subfactor", group: "affordability" },
+    rate_price_splitting_test: { x: COL.L2, y: 260, role: "subfactor", group: "affordability" },
+    borrow_interest_credit_channel: { x: COL.L1, y: 78, role: "subfactor", group: "affordability" },
+    borrowing_capacity_subdrivers: { x: COL.L1, y: 208, role: "subfactor", group: "affordability" },
+    financing_pressure: { x: COL.DRV, y: 130, role: "driver", group: "affordability" },
 
-    mortgage_lending_standards_outlook: { x: 78, y: 28, role: "subfactor", group: "affordability" },
-    income_borrowing_capacity: { x: 78, y: 138, role: "subfactor", group: "affordability" },
-    rate_price_splitting_test: { x: 78, y: 248, role: "subfactor", group: "affordability" },
-    borrow_interest_credit_channel: { x: 320, y: 58, role: "subfactor", group: "affordability" },
-    borrowing_capacity_subdrivers: { x: 320, y: 182, role: "subfactor", group: "affordability" },
-    financing_pressure: { x: 562, y: 120, role: "driver", group: "affordability" },
+    // ── lane: macro demand → macro_demand ──
+    demographics_migration_household_formation: { x: COL.L1, y: 458, role: "subfactor", group: "macro_demand" },
+    macro_labor_confidence_policy: { x: COL.L1, y: 588, role: "subfactor", group: "macro_demand" },
+    equity_wealth_liquidity_channel: { x: COL.L1, y: 718, role: "subfactor", group: "macro_demand" },
+    macro_demand: { x: COL.DRV, y: 588, role: "driver", group: "macro_demand" },
 
-    demographics_migration_household_formation: { x: 850, y: 28, role: "subfactor", group: "macro_demand" },
-    macro_labor_confidence_policy: { x: 850, y: 138, role: "subfactor", group: "macro_demand" },
-    equity_wealth_liquidity_channel: { x: 850, y: 248, role: "subfactor", group: "macro_demand" },
-    macro_demand: { x: 1092, y: 120, role: "driver", group: "macro_demand" },
+    // ── lane: supply side → structural_shortage. Bottleneck components feed the
+    //    permits/pipeline node directly; the duplicate L3 "outlook" group and the L2
+    //    bottleneck-breakdown aggregator shell were removed (they re-described these). ──
+    nitrogen_construction_constraint: { x: COL.L2, y: 916, role: "subfactor", group: "supply_side" },
+    grid_congestion: { x: COL.L2, y: 1046, role: "subfactor", group: "supply_side" },
+    construction_costs: { x: COL.L2, y: 1176, role: "subfactor", group: "supply_side" },
+    municipal_land_policy: { x: COL.L2, y: 1306, role: "subfactor", group: "supply_side" },
+    supply_pipeline_subdrivers: { x: COL.L1, y: 1098, role: "subfactor", group: "supply_side" },
+    structural_shortage: { x: COL.DRV, y: 1098, role: "driver", group: "supply_side" },
 
-    nitrogen_construction_constraint: { x: 78, y: 356, role: "subfactor", group: "supply_side" },
-    grid_congestion: { x: 78, y: 466, role: "subfactor", group: "supply_side" },
-    construction_costs: { x: 78, y: 576, role: "subfactor", group: "supply_side" },
-    municipal_land_policy: { x: 320, y: 466, role: "subfactor", group: "supply_side" },
-    nitrogen_permitting_outlook: { x: 562, y: 356, role: "subfactor", group: "supply_side" },
-    grid_capacity_outlook: { x: 562, y: 466, role: "subfactor", group: "supply_side" },
-    development_viability_execution: { x: 562, y: 576, role: "subfactor", group: "supply_side" },
-    supply_bottleneck_breakdown: { x: 804, y: 466, role: "subfactor", group: "supply_side" },
-    supply_pipeline_subdrivers: { x: 1046, y: 466, role: "subfactor", group: "supply_side" },
-    structural_shortage: { x: 1288, y: 466, role: "driver", group: "supply_side" },
+    // ── lane: policy / rental → investor_selloff_rental_policy ──
+    policy_tax_subdrivers: { x: COL.L2, y: 1504, role: "subfactor", group: "policy_supply" },
+    rental_regulation_box3: { x: COL.L2, y: 1634, role: "subfactor", group: "policy_supply" },
+    box3_private_rental_tax_channel: { x: COL.L1, y: 1504, role: "subfactor", group: "policy_supply" },
+    affordable_rent_landlord_exit: { x: COL.L1, y: 1634, role: "subfactor", group: "policy_supply" },
+    investor_selloff_rental_policy: { x: COL.DRV, y: 1560, role: "driver", group: "policy_supply" },
 
-    policy_tax_subdrivers: { x: 78, y: 744, role: "subfactor", group: "policy_supply" },
-    box3_private_rental_tax_channel: { x: 320, y: 744, role: "subfactor", group: "policy_supply" },
-    rental_regulation_box3: { x: 562, y: 744, role: "subfactor", group: "policy_supply" },
-    affordable_rent_landlord_exit: { x: 804, y: 744, role: "subfactor", group: "policy_supply" },
-    investor_selloff_rental_policy: { x: 1046, y: 744, role: "driver", group: "policy_supply" },
+    // ── lane: regional → regional_tightness ──
+    local_market_subdrivers: { x: COL.L1, y: 1832, role: "subfactor", group: "regional" },
+    city_overbidding: { x: COL.L1, y: 1962, role: "subfactor", group: "regional" },
+    regional_tightness: { x: COL.DRV, y: 1894, role: "driver", group: "regional" },
 
-    local_market_subdrivers: { x: 1288, y: 690, role: "subfactor", group: "regional" },
-    city_overbidding: { x: 1288, y: 800, role: "subfactor", group: "regional" },
-    regional_tightness: { x: 1530, y: 744, role: "driver", group: "regional" },
+    // ── lane: personal (private gutter + standalone driver) ──
+    personal_decision_subdrivers: { x: COL.DRV, y: 2250, role: "driver", group: "personal" },
 
-    personal_decision_subdrivers: { x: 562, y: 920, role: "driver", group: "personal" },
-    official_price_transaction_measurement: { x: 1772, y: 392, role: "subfactor", group: "outcome" },
-    price_transaction_outcome: { x: 1772, y: 514, role: "outcome", group: "outcome" },
+    // ── outcome convergence: all drivers → market_state → measured price ──
+    market_state: { x: COL.MKT, y: 1098, role: "root", group: "outcome" },
+    official_price_transaction_measurement: { x: COL.OUT, y: 968, role: "subfactor", group: "outcome" },
+    price_transaction_outcome: { x: COL.OUT, y: 1098, role: "outcome", group: "outcome" },
   };
   const visibleIds = new Set(Object.keys(layout));
   const visible = res.factors.filter((f) => visibleIds.has(f.id));
@@ -379,7 +411,7 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
     const level = f.level ?? 2;
     return Math.max(0.58, 1 - Math.max(0, level - 2) * 0.12);
   };
-  const factors: CanvasFactor[] = visible.map((f) => {
+  const mappedFactors: CanvasFactor[] = visible.map((f) => {
     const dir = (f.direction_on_prices || "").toLowerCase();
     const p = layout[f.id];
     const attenuation = depthAttenuation(f);
@@ -399,48 +431,64 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
       support,
       x: snap(p.x), y: snap(p.y),
       evidence: f.sources?.[0] ? { claim: f.summary || f.label, source: f.sources[0].label, url: f.sources[0].url || "" } : null,
+      summary: f.summary || undefined,
+      directionOnPrices: f.direction_on_prices || undefined,
+      metrics: f.top_metrics || [],
+      sources: (f.sources || []).map((s) => ({ label: s.label, url: s.url || "", domain: s.domain || "", origin: s.source_origin || "web" })),
+      evidenceStatus: f.evidence_status_rollup || undefined,
+      avgConfidence: f.average_probability_pct ?? null,
+      dominantStatus: f.dominant_evidence_status || undefined,
+      metricCount: f.metric_count ?? (f.top_metrics?.length ?? 0),
+      sourceCount: f.source_count ?? (f.sources?.length ?? 0),
     };
   });
+  const protocolNode: CanvasFactor = {
+    id: "trace_core_protocol",
+    label: "Trace Core Protocol",
+    category: "outcome",
+    value: "Pearl's Causal Framework",
+    trend: "→",
+    evidenceCount: 0,
+    credibility: "primary",
+    contested: false,
+    role: "protocol",
+    group: "outcome",
+    weightReady: false,
+    mechanism: "Pearl's Causal Framework",
+    support: {},
+    x: snap(COL.PROTOCOL),
+    y: snap(1098),
+    evidence: null,
+  };
+  const factors: CanvasFactor[] = [...mappedFactors, protocolNode];
   const ids = new Set(factors.map((f) => f.id));
-  const signMap = (s?: string): 1 | -1 | 0 => (s === "+" ? 1 : s === "-" ? -1 : 0);
-  const strengthMap = (s?: string, contested?: boolean): number =>
-    s === "strong" ? 0.7 : s === "weak" ? 0.4 : contested ? 0.5 : 0.6;
+  const protocolDriverIds = new Set([
+    "financing_pressure",
+    "macro_demand",
+    "structural_shortage",
+    "investor_selloff_rental_policy",
+    "regional_tightness",
+    "personal_decision_subdrivers",
+  ]);
   // containment edges: child -> parent (drawn as the tree skeleton)
   const contains: CanvasEdge[] = (res.edges || [])
     .filter((e) => (e.relation ?? "contains") === "contains" && ids.has(e.source) && ids.has(e.target))
+    .filter((e) => !(e.source === "market_state" && protocolDriverIds.has(e.target)))
+    // grid_congestion's data-parent is structural_shortage; re-route it to the
+    // permits/pipeline node (see addContains below) so it doesn't bypass it.
+    .filter((e) => !(e.source === "structural_shortage" && e.target === "grid_congestion"))
     .map((e) => ({ from: e.target, to: e.source, strength: 0.35, sign: 1 as const, relation: "contains" as const }));
   const addContains = (from: string, to: string) => {
     if (!ids.has(from) || !ids.has(to)) return;
     if (contains.some((e) => e.from === from && e.to === to)) return;
     contains.push({ from, to, strength: 0.35, sign: 1, relation: "contains" });
   };
-  addContains("supply_bottleneck_breakdown", "supply_pipeline_subdrivers");
-  addContains("nitrogen_construction_constraint", "nitrogen_permitting_outlook");
-  addContains("grid_congestion", "grid_capacity_outlook");
-  addContains("construction_costs", "development_viability_execution");
-  addContains("municipal_land_policy", "nitrogen_permitting_outlook");
-  addContains("municipal_land_policy", "grid_capacity_outlook");
-  addContains("nitrogen_permitting_outlook", "supply_bottleneck_breakdown");
-  addContains("grid_capacity_outlook", "supply_bottleneck_breakdown");
-  addContains("development_viability_execution", "supply_bottleneck_breakdown");
+  // the supply bottleneck components feed the permits / pipeline node directly
+  addContains("grid_congestion", "supply_pipeline_subdrivers");
   addContains("policy_tax_subdrivers", "investor_selloff_rental_policy");
   addContains("box3_private_rental_tax_channel", "investor_selloff_rental_policy");
-  // annotated causal / confounder / feedback / conditioning edges: source -> target,
-  // honoring the data's sign + relation (a contested causal edge renders as "contested").
-  const causal: CanvasEdge[] = (res.edges || [])
-    .filter((e) => (e.relation ?? "contains") !== "contains" && ids.has(e.source) && ids.has(e.target))
-    .map((e) => {
-      const rel: CanvasEdge["relation"] =
-        e.contested && e.relation === "causal" ? "contested" : (e.relation as CanvasEdge["relation"]);
-      return {
-        from: e.source,
-        to: e.target,
-        strength: strengthMap(e.strength, e.contested),
-        sign: signMap(e.sign),
-        relation: rel,
-        mechanism: e.mechanism,
-      };
-    });
-  const edges: CanvasEdge[] = [...contains, ...causal];
+  protocolDriverIds.forEach((id) => addContains(id, "trace_core_protocol"));
+  addContains("trace_core_protocol", "market_state");
+  const edges: CanvasEdge[] = contains;
   return { factors, edges };
 }

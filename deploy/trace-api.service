@@ -1,0 +1,16 @@
+[Unit]
+Description=Trace engine API (warm FastAPI/uvicorn for the Megathon cockpit)
+After=network.target
+
+[Service]
+Type=simple
+# engine/*.py is uploaded to /srv/megathon/engine ; fixtures to /srv/megathon/fixtures
+WorkingDirectory=/srv/megathon
+ExecStart=/srv/megathon/venv/bin/uvicorn server:app --app-dir engine --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=2
+# Deterministic engine, no secrets needed. If you ever add env vars, use an
+# EnvironmentFile= here rather than baking values into this unit.
+
+[Install]
+WantedBy=multi-user.target
