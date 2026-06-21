@@ -146,15 +146,17 @@ export default function TraceWorkspace() {
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
     setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
   };
-  // frame an arbitrary world rect into the visible area LEFT of the inspector panel.
+  // frame an arbitrary world rect into the VISIBLE viewport — left of the inspector panel AND
+  // above the bottom dock — so a focused area fills the viewport instead of sliding under them.
   const frameRect = (minX: number, minY: number, maxX: number, maxY: number, maxK: number) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     const panelPx = rightOn ? 360 : 0;
-    const visW = rect ? ((rect.width - panelPx) / rect.width) * VBW : VBW * 0.6;
-    const pad = 80, cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY);
-    const k = Math.max(0.4, Math.min(maxK, Math.min((visW - 2 * pad) / cw, (VBH - 2 * pad) / ch)));
+    const visW = rect ? ((rect.width - panelPx) / rect.width) * VBW : VBW * 0.62;
+    const visH = rect ? ((rect.height - dockH) / rect.height) * VBH : VBH * 0.8;
+    const pad = 64, cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY);
+    const k = Math.max(0.4, Math.min(maxK, Math.min((visW - 2 * pad) / cw, (visH - 2 * pad) / ch)));
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    setCam({ x: visW / 2 - cx * k, y: VBH / 2 - cy * k, k });
+    setCam({ x: visW / 2 - cx * k, y: visH / 2 - cy * k, k });
   };
   // After plugging variables in: light up the WHOLE personal-variable area (the value
   // cards + the personal-decision driver they feed) and frame the camera on it. Selecting
@@ -182,7 +184,13 @@ export default function TraceWorkspace() {
     const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
     const k = OVERVIEW_K;
-    setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
+    // Center in the VISIBLE viewport — left of the inspector AND above the bottom dock — so the
+    // overview isn't pushed right under the panel nor sitting low above the dock.
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const panelPx = rightOn ? 360 : 0;
+    const visW = rect ? ((rect.width - panelPx) / rect.width) * VBW : VBW * 0.82;
+    const visH = rect ? ((rect.height - dockH) / rect.height) * VBH : VBH * 0.82;
+    setCam({ x: visW / 2 - cx * k, y: visH / 2 - cy * k, k });
   };
   const focusComponent = (id: string) => {
     const factor = allFactors.find((f) => f.id === id) || null;
@@ -216,9 +224,10 @@ export default function TraceWorkspace() {
     setHover(null);
     defaultView();
   };
-  // click a lane background → focus the whole group (toggle); clears any node selection.
-  const focusGroup = (g: FactorGroup) => { setGroupFocus((prev) => (prev === g ? null : g)); setSel(null); setHover(null); };
-  // click a legend item → focus that group AND frame/zoom to its area.
+  // click a lane background → focus that area AND fit it to the viewport (same as the legend);
+  // clicking the already-focused area again returns to the overview.
+  const focusGroup = (g: FactorGroup) => { if (groupFocus === g) exitFocus(); else focusGroupArea(g); };
+  // click a legend item (or a lane) → focus that group AND fit/zoom its area to the viewport.
   const focusGroupArea = (g: FactorGroup) => {
     setGroupFocus(g); setSel(null); setHover(null);
     const extra = g === "personal" ? personal.nodes.map((n) => ({ x: n.x, y: n.y, w: 146, h: 54 })) : [];
@@ -226,7 +235,7 @@ export default function TraceWorkspace() {
     if (!boxes.length) return;
     const minX = Math.min(...boxes.map((b) => b.x)), minY = Math.min(...boxes.map((b) => b.y));
     const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
-    frameRect(minX - 36, minY - 48, maxX + 36, maxY + 48, 1.25);
+    frameRect(minX - 36, minY - 48, maxX + 36, maxY + 48, 2.0);
   };
 
   useEffect(() => {
