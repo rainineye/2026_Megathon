@@ -19,8 +19,8 @@ import {
   type PersonalNode
 } from "./model";
 
-const PW = 120;
-const PH = 46;
+const PW = 146;
+const PH = 54;
 
 // Lane bands wrap each group's gridded nodes (cause → effect, left → right; drivers
 // align in one column that fans into the outcome). Coords mirror the layout map in
@@ -29,7 +29,7 @@ const GROUPS: Array<{ id: FactorGroup; title: string; sub: string; x: number; y:
   { id: "affordability", title: "FINANCING / DEMAND", sub: "subdrivers → financing pressure", x: 538, y: -56, w: 838, h: 434, color: K.secondary },
   { id: "macro_demand", title: "MACRO ECONOMY", sub: "population / labour / liquidity → demand", x: 824, y: 402, w: 552, h: 434, color: K.secondarySoft },
   { id: "supply_side", title: "SUPPLY SIDE", sub: "grid / nitrogen blockers → pipeline → shortage", x: 538, y: 860, w: 838, h: 564, color: K.meta },
-  { id: "policy_supply", title: "POLICY SUPPLY", sub: "tax / rental policy → investor supply", x: 538, y: 1448, w: 838, h: 304, color: K.warn },
+  { id: "policy_supply", title: "POLICY SUPPLY", sub: "tax / rental policy → investor supply", x: 824, y: 1448, w: 552, h: 304, color: K.warn },
   { id: "regional", title: "REGIONAL / LOCAL", sub: "local tightness → regional divergence", x: 824, y: 1776, w: 552, h: 304, color: "#6D7162" },
   { id: "personal", title: "PERSONAL VARIABLES", sub: "private fit layer; conditions the read", x: 538, y: 2104, w: 838, h: 312, color: K.good },
   { id: "outcome", title: "OUTCOME · CONCLUSIONS", sub: "market state → measured price → ranked read distribution", x: 1682, y: 782, w: 838, h: 694, color: K.primary },
@@ -49,6 +49,8 @@ interface Props {
   lead?: string;   // id of the leading read/conclusion node → rust emphasis
   sel: string | null;
   hover: string | null;
+  groupFocus?: FactorGroup | null;            // a focused lane (clicking its band) → all its nodes readable
+  onSelectGroup?: (g: FactorGroup) => void;   // click a lane background to focus the whole group
   cam: Cam;
   setCam: (updater: (c: Cam) => Cam) => void;
   onHover: (id: string | null) => void;
@@ -167,12 +169,16 @@ export default function CanvasGraph({
   onHover,
   onSelect,
   onMove,
-  onDragNode
+  onDragNode,
+  groupFocus,
+  onSelectGroup
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean } | null>(null);
   const pan = useRef<{ sx: number; sy: number; cx: number; cy: number } | null>(null);
   const focus = sel || hover;
+  // node-focus (sel/hover) takes precedence; otherwise a clicked lane focuses its whole group.
+  const groupOn = !focus && !!groupFocus;
 
   const byId = (id: string) => factors.find((factor) => factor.id === id);
   const incidentEdges = (id: string) => edges.filter((edge) => edge.from === id || edge.to === id);
@@ -251,8 +257,15 @@ export default function CanvasGraph({
       <g transform={`translate(${cam.x},${cam.y}) scale(${cam.k})`}>
         <rect x={-500} y={-700} width={3200} height={3600} fill="url(#tw-dots)" />
 
-        {GROUPS.map((group) => (
-          <g key={group.id} opacity={focus ? (factors.some((factor) => factor.group === group.id && factor.id === focus) ? 1 : 0.45) : 1}>
+        {GROUPS.map((group) => {
+          const isGroupSel = groupFocus === group.id;
+          const gOpacity = groupOn
+            ? (isGroupSel ? 1 : 0.3)
+            : focus
+              ? (factors.some((factor) => factor.group === group.id && factor.id === focus) ? 1 : 0.45)
+              : 1;
+          return (
+          <g key={group.id} opacity={gOpacity} onClick={() => onSelectGroup?.(group.id)} style={{ cursor: "pointer" }}>
             <rect
               x={group.x}
               y={group.y}
@@ -260,7 +273,10 @@ export default function CanvasGraph({
               height={group.h}
               rx={8}
               fill={group.color}
-              opacity={0.055}
+              opacity={isGroupSel ? 0.13 : 0.055}
+              stroke={group.color}
+              strokeOpacity={isGroupSel ? 0.6 : 0}
+              strokeWidth={1.5}
             />
             <text x={group.x + 14} y={group.y + 22} fontFamily="'JetBrains Mono', monospace" fontSize={9.5} letterSpacing={1.1} fill={group.color}>
               {group.title}
@@ -269,7 +285,8 @@ export default function CanvasGraph({
               {group.sub}
             </text>
           </g>
-        ))}
+          );
+        })}
 
         {edges.map((edge, index) => {
           const from = byId(edge.from);
@@ -277,6 +294,9 @@ export default function CanvasGraph({
           if (!from || !to) return null;
           const isIncident = !!focus && (edge.from === focus || edge.to === focus);
           const style = edgeStyle(edge, from, !!focus, isIncident);
+          const eo = groupOn
+            ? (from.group === groupFocus && to.group === groupFocus ? 0.9 : 0.07)
+            : style.opacity;
           const path = curve(from, to);
           return (
             <path
@@ -286,7 +306,7 @@ export default function CanvasGraph({
               stroke={style.color}
               strokeWidth={style.width}
               strokeDasharray={style.dash}
-              opacity={style.opacity}
+              opacity={eo}
               markerEnd={edge.relation === "contains" ? "url(#tw-arrow)" : undefined}
               style={{ transition: "opacity .2s, stroke-width .15s" }}
             />
@@ -299,7 +319,9 @@ export default function CanvasGraph({
           const hasWeight = node.weightReady !== false && Object.keys(node.support).length > 0;
           const related =
             !focus || focus === node.id || incidentEdges(focus).some((edge) => edge.from === node.id || edge.to === node.id);
-          const opacity = focus ? (related ? 1 : 0.22) : 1;
+          const opacity = groupOn
+            ? (node.group === groupFocus ? 1 : 0.16)
+            : focus ? (related ? 1 : 0.22) : 1;
           const active = sel === node.id || hover === node.id;
           const isLead = node.id === lead;
           const color = isLead ? K.primary : CAT_COLOR[node.category];
@@ -515,7 +537,9 @@ export default function CanvasGraph({
 
         {personal?.nodes.map((node) => {
           const connected = personal.edges.some((edge) => edge.from === node.id && edge.to === focus);
-          const opacity = focus ? (focus === node.id || connected ? 1 : 0.28) : 1;
+          const opacity = groupOn
+            ? (groupFocus === "personal" ? 1 : 0.16)
+            : focus ? (focus === node.id || connected ? 1 : 0.28) : 1;
           const active = sel === node.id || hover === node.id;
           return (
             <g
@@ -526,14 +550,15 @@ export default function CanvasGraph({
               onMouseLeave={() => onHover(null)}
               onClick={() => onSelect(node.id)}
             >
-              <rect x={node.x} y={node.y} width={PW} height={PH} rx={3} fill="#F0F3EC" stroke={K.good} strokeWidth={active ? 2 : 1.3} strokeDasharray="4 3" />
-              <text x={node.x + 11} y={node.y + 17} fontFamily="'JetBrains Mono', monospace" fontSize={8} letterSpacing={0.5} fill={K.good}>
-                PRIVATE
-              </text>
-              <text x={node.x + 11} y={node.y + 32} fontFamily="'Instrument Sans', sans-serif" fontSize={10.5} fontWeight={500} fill={K.ink}>
+              {/* private VALUE component — the user's input, value-forward. Name on top
+                  (small, green = private), value below (the hero). Green dashed border +
+                  the corner dot signal "private · never leaves device". */}
+              <rect x={node.x} y={node.y} width={PW} height={PH} rx={4} fill="#F0F3EC" stroke={K.good} strokeWidth={active ? 2 : 1.3} strokeDasharray="4 3" />
+              <circle cx={node.x + PW - 9} cy={node.y + 9} r={2.4} fill={K.good} />
+              <text x={node.x + 12} y={node.y + 20} fontFamily="'JetBrains Mono', monospace" fontSize={8.5} letterSpacing={0.4} fill={K.good}>
                 {node.label}
               </text>
-              <text x={node.x + PW - 11} y={node.y + 32} textAnchor="end" fontFamily="'Fraunces', serif" fontStyle="italic" fontSize={13} fill={K.good}>
+              <text x={node.x + 12} y={node.y + 41} fontFamily="'Fraunces', serif" fontStyle="italic" fontSize={17} fill={K.ink}>
                 {node.value}
               </text>
             </g>

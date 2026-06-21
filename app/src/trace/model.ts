@@ -134,7 +134,10 @@ export function personalLayer(active: VarKey[], vars: Vars): { nodes: PersonalNo
     x: PV_X + (index % 2) * 200,
     y: 2160 + Math.floor(index / 2) * 90,
   }));
-  const edges: CanvasEdge[] = defs.flatMap((d) => d.conditions.map((t) => ({ from: `pv_${d.id}`, to: t, strength: 0.5, sign: 1 as const, relation: "conditioning" as const })));
+  // Each private value plugs into the personal-decision driver node (same lane) — not
+  // out to the conditioned factors / the read. The actual conditioning math still uses
+  // each var's `conditions`; this is just the on-canvas wiring.
+  const edges: CanvasEdge[] = defs.map((d) => ({ from: `pv_${d.id}`, to: "personal_decision_subdrivers", strength: 0.5, sign: 1 as const, relation: "conditioning" as const }));
   return { nodes, edges };
 }
 
@@ -351,8 +354,9 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
     structural_shortage: { x: COL.DRV, y: 1098, role: "driver", group: "supply_side" },
 
     // ── lane: policy / rental → investor_selloff_rental_policy ──
-    policy_tax_subdrivers: { x: COL.L2, y: 1504, role: "subfactor", group: "policy_supply" },
-    rental_regulation_box3: { x: COL.L2, y: 1634, role: "subfactor", group: "policy_supply" },
+    // Two distinct mechanisms only: Box-3 tax channel + Affordable-Rent → landlord exit.
+    // (Dropped the generic 'policy_tax_subdrivers' umbrella and the duplicate
+    // 'rental_regulation_box3', which just restated these two.)
     box3_private_rental_tax_channel: { x: COL.L1, y: 1504, role: "subfactor", group: "policy_supply" },
     affordable_rent_landlord_exit: { x: COL.L1, y: 1634, role: "subfactor", group: "policy_supply" },
     investor_selloff_rental_policy: { x: COL.DRV, y: 1560, role: "driver", group: "policy_supply" },
@@ -485,8 +489,8 @@ export function adaptFactorTree(res: FactorResearch): { factors: CanvasFactor[];
   };
   // the supply bottleneck components feed the permits / pipeline node directly
   addContains("grid_congestion", "supply_pipeline_subdrivers");
-  addContains("policy_tax_subdrivers", "investor_selloff_rental_policy");
   addContains("box3_private_rental_tax_channel", "investor_selloff_rental_policy");
+  addContains("affordable_rent_landlord_exit", "investor_selloff_rental_policy");
   protocolDriverIds.forEach((id) => addContains(id, "trace_core_protocol"));
   addContains("trace_core_protocol", "market_state");
   const edges: CanvasEdge[] = contains;

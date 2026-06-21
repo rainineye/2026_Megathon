@@ -14,7 +14,7 @@ import {
   K, CAT_COLOR, SCENARIOS, INDICATORS, NET_READ, FALLBACK_FACTORS, FALLBACK_EDGES,
   conditionDistribution, factorWeights, adaptFactorTree, personalLayer, personalAdvice, fmtVar, PERSONAL_VARS,
   CW, CH, VBW, VBH, nodeSize,
-  type CanvasFactor, type CanvasEdge, type Vars, type Category, type VarKey, type PersonalVarDef,
+  type CanvasFactor, type CanvasEdge, type Vars, type Category, type VarKey, type PersonalVarDef, type FactorGroup,
 } from "./trace/model";
 
 const mono = "'JetBrains Mono', monospace", sans = "'Instrument Sans', sans-serif", serif = "'Fraunces', serif";
@@ -30,6 +30,16 @@ type ProtocolRun = {
   factor_support?: Record<string, Record<string, number>>;
 };
 
+// Demo presets: input sets that drive DRASTICALLY different advice. Verified against
+// conditionDistribution + personalAdvice (financing-led vs shortage-led leading scenario).
+const DEMO_PRESETS: Array<{ id: string; label: string; sub: string; advice: string; vars: Partial<Vars>; active: VarKey[] }> = [
+  { id: "stretched", label: "Stretched first-timer", sub: "EUR 480k - 40k down - 5.5% - EUR 2,000/mo - 5 yr", advice: "Fix financing first",
+    vars: { price: 480000, deposit: 40000, rate: 5.5, ceil: 2000, hor: 5, flex: false }, active: ["price", "deposit", "rate", "ceil", "hor"] },
+  { id: "patient", label: "Patient long-term holder", sub: "EUR 400k - 120k down - 3.4% - EUR 3,000/mo - 15 yr", advice: "Lean buy - time on your side",
+    vars: { price: 400000, deposit: 120000, rate: 3.4, ceil: 3000, hor: 15, flex: false }, active: ["price", "deposit", "rate", "ceil", "hor"] },
+  { id: "cautious", label: "Short-horizon buyer", sub: "EUR 380k - 110k down - 3.6% - EUR 2,800/mo - 6 yr", advice: "Buy only if you can hold",
+    vars: { price: 380000, deposit: 110000, rate: 3.6, ceil: 2800, hor: 6, flex: false }, active: ["price", "deposit", "rate", "ceil", "hor"] },
+];
 export default function TraceWorkspace() {
   const [factors, setFactors] = useState<CanvasFactor[]>(FALLBACK_FACTORS);
   const [edges, setEdges] = useState<CanvasEdge[]>(FALLBACK_EDGES);
@@ -45,6 +55,7 @@ export default function TraceWorkspace() {
   const [isFs, setIsFs] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
+  const [groupFocus, setGroupFocus] = useState<FactorGroup | null>(null);   // a focused lane (click its background)
   const [cam, setCam] = useState({ x: 40, y: 20, k: 0.46 });   // default fits the taller gridded graph
   const [protocolRun, setProtocolRun] = useState<ProtocolRun | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -82,7 +93,11 @@ export default function TraceWorkspace() {
 
   // outputs read the LAST-RUN snapshot; the graph's private nodes track the live edits.
   const protocolDist = protocolRun?.scenario_distribution ?? protocolRun?.support ?? protocolRun?.distribution ?? protocolRun?.candidate_support ?? null;
-  const dist = protocolDist ? { w: protocolDist, buf: 0, br: 0 } : conditionDistribution(applied, appliedActive, null);
+  // Condition ON TOP of the engine's distribution: the engine gives the public prior,
+  // the private variables shift it. This is what makes the demo presets change the advice
+  // (run-default-tier itself does not re-weight by personal_variables). No vars active ->
+  // neutral conditioning -> dist == engine base.
+  const dist = conditionDistribution(applied, appliedActive, protocolDist ?? null);
   const weights = protocolRun?.factor_weights ?? (protocolDist ? factorWeights(factors, dist.w) : {});
   const protocolSupport = protocolRun?.factor_support;
   const factorsWithProtocolSupport = protocolSupport
@@ -134,6 +149,34 @@ export default function TraceWorkspace() {
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
     setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
   };
+  // frame an arbitrary world rect into the visible area LEFT of the inspector panel.
+  const frameRect = (minX: number, minY: number, maxX: number, maxY: number, maxK: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const panelPx = rightOn ? 360 : 0;
+    const visW = rect ? ((rect.width - panelPx) / rect.width) * VBW : VBW * 0.6;
+    const pad = 80, cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY);
+    const k = Math.max(0.4, Math.min(maxK, Math.min((visW - 2 * pad) / cw, (VBH - 2 * pad) / ch)));
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    setCam({ x: visW / 2 - cx * k, y: VBH / 2 - cy * k, k });
+  };
+  // After plugging variables in: light up the WHOLE personal-variable area (the value
+  // cards + the personal-decision driver they feed) and frame the camera on it. Selecting
+  // the area's anchor keeps this group + its connected pv nodes bright and dims the rest,
+  // so the freshly-plugged inputs read clearly at once.
+  const focusPersonalFor = (active: VarKey[]) => {
+    const ns = personalLayer(active, vars).nodes;
+    if (!ns.length) return;
+    const driver = allFactors.find((f) => f.id === "personal_decision_subdrivers");
+    const xs = [...ns.map((n) => n.x), ...(driver ? [driver.x] : [])];
+    const ys = [...ns.map((n) => n.y), ...(driver ? [driver.y] : [])];
+    const xe = [...ns.map((n) => n.x + 180), ...(driver ? [driver.x + CW] : [])];
+    const ye = [...ns.map((n) => n.y + 90), ...(driver ? [driver.y + CH] : [])];
+    setSel("personal_decision_subdrivers");   // light up the personal area, dim the rest
+    setHover(null);
+    frameRect(Math.min(...xs) - 40, Math.min(...ys) - 50, Math.max(...xe) + 40, Math.max(...ye) + 50, 1.15);
+  };
+  // jump to the OUTCOME read column (the ranked reads + your-call advice).
+  const focusOutcome = () => frameRect(2002, 760, 2760, 1500, 1.0);
   // DEFAULT view: keep node text at its most-legible size (font-size baseline), centered
   // on the graph; edges may overflow - pan to browse. This is the home view.
   const defaultView = () => {
@@ -152,6 +195,7 @@ export default function TraceWorkspace() {
     const privateNode = personal.nodes.find((n) => n.id === id) || null;
     const node = factor ?? privateNode;
     setSel(id);
+    setGroupFocus(null);   // focusing a single node clears any whole-lane focus
     setHover(null);
     setRightOn(true);
     if (!node) return;
@@ -174,13 +218,16 @@ export default function TraceWorkspace() {
   };
   const exitFocus = () => {
     setSel(null);
+    setGroupFocus(null);
     setHover(null);
     defaultView();
   };
+  // click a lane background → focus the whole group (toggle); clears any node selection.
+  const focusGroup = (g: FactorGroup) => { setGroupFocus((prev) => (prev === g ? null : g)); setSel(null); setHover(null); };
 
   useEffect(() => {
     const onEsc = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !sel) return;
+      if (event.key !== "Escape" || (!sel && !groupFocus)) return;
       event.preventDefault();
       exitFocus();
     };
@@ -200,6 +247,7 @@ export default function TraceWorkspace() {
       setProtocolRun(res as ProtocolRun);
       setApplied(vars);
       setAppliedActive(activeVars);
+      focusOutcome();   // demo: jump to the outcome read so the advice is front-and-center
     } finally {
       setRunning(false);
     }
@@ -221,19 +269,21 @@ export default function TraceWorkspace() {
     document.addEventListener("fullscreenchange", fn);
     return () => document.removeEventListener("fullscreenchange", fn);
   }, []);
-  // fit the whole graph into view once the factor tree first arrives.
+  // settle to the default home view once the factor tree first arrives.
   useEffect(() => {
-    if (factors.length && !prevActive.current) { fitView(); prevActive.current = 1; }
+    if (factors.length && !prevActive.current) { defaultView(); prevActive.current = 1; }
   }, [factors.length]);
 
   return (
     <div ref={rootRef} style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: K.paper, color: K.ink, fontFamily: sans, overflow: "hidden" }}>
+      <style>{`.trace-range{-webkit-appearance:none;appearance:none;height:5px;border-radius:999px;outline:none;cursor:pointer}.trace-range::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:transparent}.trace-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:${K.good};border:2px solid ${K.paper};box-shadow:0 1px 4px rgba(0,0,0,.28);margin-top:-5px;cursor:pointer}.trace-range::-moz-range-track{height:5px;border-radius:999px;background:transparent}.trace-range::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:${K.good};border:2px solid ${K.paper};box-shadow:0 1px 4px rgba(0,0,0,.28);cursor:pointer}`}</style>
       <Header source={source} onRun={runProtocol} running={running} dirty={dirty}
         onFullscreen={toggleFullscreen} isFs={isFs} onTogglePanels={togglePanels} panelsOn={panelsOn} />
       <div ref={bodyRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {/* ---- canvas - FULL viewport width ---- */}
         <div ref={canvasRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: K.paper }}>
           <CanvasGraph factors={allFactors} edges={allEdges} weights={allWeights} lead={leadReadId} personal={personal} sel={sel} hover={hover}
+            groupFocus={groupFocus} onSelectGroup={focusGroup}
             cam={cam} setCam={setCam} onHover={setHover} onSelect={focusComponent} onMove={moveFactor} />
           <NavRail onZoom={zoom} onFit={fitView} k={cam.k} />
           <LegendBar />
@@ -243,7 +293,7 @@ export default function TraceWorkspace() {
           <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, display: "flex", flexDirection: "column", zIndex: 8 }}>
             <style>{`.trace-scroll{scrollbar-width:thin;scrollbar-color:rgba(122,106,84,.22) transparent}.trace-scroll::-webkit-scrollbar{width:5px;height:5px}.trace-scroll::-webkit-scrollbar-track{background:transparent;border:none}.trace-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.trace-scroll::-webkit-scrollbar-thumb{background:rgba(122,106,84,.2);border-radius:99px}.trace-scroll:hover::-webkit-scrollbar-thumb{background:rgba(122,106,84,.4)}.trace-scroll::-webkit-scrollbar-corner{background:transparent}`}</style>
             {/* INPUTS — primary controls, on top (its own light label; the padded section) */}
-            <div className="trace-scroll" style={{ flexShrink: 0, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10, maxHeight: "56%", overflowY: "auto" }}>
+            <div className="trace-scroll" style={{ flexShrink: 0, padding: "16px 12px 13px", display: "flex", flexDirection: "column", gap: 10, maxHeight: "56%", overflowY: "auto" }}>
               <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Inputs</span>
               <AddVariablesCTA onPick={() => setPicker(true)} />
               {activeVars.length > 0 && (
@@ -252,7 +302,7 @@ export default function TraceWorkspace() {
               )}
             </div>
             {/* INSPECTOR — light section header (matches the other labels) + detail, BELOW the inputs */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexShrink: 0, padding: "9px 12px 5px", borderTop: `1px solid ${K.rule}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexShrink: 0, padding: "9px 12px 8px", borderTop: `1px solid ${K.rule}`, borderBottom: `1px solid ${K.ruleSoft}` }}>
               <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selPersonal ? `Inspector · ${selPersonal.label}` : selFactor ? `Inspector · ${selFactor.label}` : "Inspector"}</span>
               {sel && <button onClick={exitFocus} title="Exit focused component (Esc)" style={{ flexShrink: 0, border: `1px solid ${K.rule}`, background: K.paperDeep, color: K.inkSoft, cursor: "pointer", fontFamily: mono, fontSize: 8, letterSpacing: 0.8, textTransform: "uppercase", padding: "2px 6px", borderRadius: 2 }}>Esc · graph</button>}
             </div>
@@ -278,7 +328,7 @@ export default function TraceWorkspace() {
           style={{ flexShrink: 0, height: 20, borderTop: `1px solid ${K.rule}`, background: K.paperDeep, cursor: "pointer", fontFamily: mono, fontSize: 8.5, letterSpacing: 1.5, textTransform: "uppercase", color: K.inkSoft }}>＋ Indicators to watch</button>
       )}
       {picker && <VariablePicker initial={activeVars} vars={vars} setVars={setVars} onClose={() => setPicker(false)}
-        onConfirm={(keys) => { setActiveVars(keys); setPicker(false); }} />}
+        onConfirm={(keys) => { setActiveVars(keys); setPicker(false); focusPersonalFor(keys); }} />}
     </div>
   );
 }
@@ -516,7 +566,7 @@ function NavRail({ onZoom, onFit, k }: { onZoom: (f: number) => void; onFit: () 
 
 // ---- LegendBar (left of canvas, vertical; order mirrors the lane stack top→bottom) --
 function LegendBar() {
-  const items: Array<[string, string]> = [["financing", K.secondary], ["demand", K.secondarySoft], ["supply", K.meta], ["policy", K.warn], ["regional", "#6D7162"], ["private", K.good], ["price", K.primary]];
+  const items: Array<[string, string]> = [["financing", K.secondary], ["demand", K.secondarySoft], ["supply", K.meta], ["policy", K.warn], ["regional", "#6D7162"], ["private", K.good], ["outcome", K.primary]];
   return (
     <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 9, background: "rgba(250,248,243,.5)", borderRadius: 3, padding: "11px 13px", zIndex: 5 }}>
       {items.map(([l, c]) => <span key={l} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 9.5, color: K.inkSoft }}><span style={{ width: 9, height: 9, borderRadius: 1, background: c, flexShrink: 0 }} />{l}</span>)}
@@ -541,7 +591,8 @@ const ctaBtn: React.CSSProperties = { flex: 1, fontFamily: mono, fontSize: 9.5, 
 // ---- Your variables (control panel for the active private variables) -------
 function YourVariables({ active, vars, setVars, onManage, onRemove, dirty, running, onRun }: { active: VarKey[]; vars: Vars; setVars: React.Dispatch<React.SetStateAction<Vars>>; onManage: () => void; onRemove: (k: VarKey) => void; dirty: boolean; running: boolean; onRun: () => void }) {
   return (
-    <FoldSection title="Your variables · private" defaultOpen>
+    <div>
+      <div style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta, marginBottom: 7 }}>Your variables · private</div>
       {active.map((k) => {
         const d = PERSONAL_VARS.find((x) => x.id === k)!;
         return (
@@ -558,7 +609,7 @@ function YourVariables({ active, vars, setVars, onManage, onRemove, dirty, runni
       })}
       <button onClick={onManage} style={{ ...ctaBtn, textAlign: "center", color: K.good, borderColor: K.good }}>＋ Manage private variables</button>
       <button onClick={onRun} disabled={running || !dirty} style={{ width: "100%", marginTop: 7, fontFamily: mono, fontSize: 10, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", border: "none", borderRadius: 2, padding: "8px", cursor: dirty && !running ? "pointer" : "default", color: K.paper, background: running ? K.meta : dirty ? K.primary : K.rule, transition: "background .2s" }}>{running ? "Running protocol…" : dirty ? "▶ Run protocol to update" : "✓ Output up to date"}</button>
-    </FoldSection>
+    </div>
   );
 }
 
@@ -603,7 +654,7 @@ function ImpactMeter({ impact }: { impact: number }) {
   const n = Math.round(impact * 5);
   return (
     <span title={`Impact on the read: ${n}/5`} style={{ display: "inline-flex", gap: 2, alignItems: "center" }}>
-      {[0, 1, 2, 3, 4].map((i) => <span key={i} style={{ width: 5, height: 5, borderRadius: 1, background: i < n ? K.primary : K.ruleSoft }} />)}
+      {[0, 1, 2, 3, 4].map((i) => <span key={i} style={{ width: 5, height: 5, borderRadius: 1, background: i < n ? K.secondary : K.ruleSoft }} />)}
     </span>
   );
 }
@@ -646,6 +697,23 @@ function VariablePicker({ initial, vars, setVars, onClose, onConfirm }: { initia
           </div>
           <div style={{ fontFamily: mono, fontSize: 8.5, letterSpacing: 0.6, textTransform: "uppercase", color: K.good, marginTop: 4 }}>● Private · never leaves your device · ordered by impact</div>
         </div>
+        {/* preset roles — one click fills all private variables for that persona, then tweak below */}
+        <div style={{ padding: "11px 16px", borderBottom: `1px solid ${K.rule}` }}>
+          <div style={{ fontFamily: mono, fontSize: 7.5, letterSpacing: 0.8, textTransform: "uppercase", color: K.inkMute, marginBottom: 6 }}>Start from a profile</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {DEMO_PRESETS.map((preset) => (
+              <button key={preset.id} onClick={() => { setVars((s) => ({ ...s, ...preset.vars } as Vars)); setSel(preset.active); }} title={`Apply ${preset.label}`}
+                onMouseEnter={(e) => (e.currentTarget.style.background = K.paperDeep)} onMouseLeave={(e) => (e.currentTarget.style.background = K.paper)}
+                style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, width: "100%", border: `1px solid ${K.rule}`, borderRadius: 3, background: K.paper, cursor: "pointer", padding: "6px 9px", textAlign: "left", transition: "background .12s" }}>
+                <span style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "baseline", gap: 8 }}>
+                  <b style={{ fontSize: 11.5 }}>{preset.label}</b>
+                  <span style={{ fontFamily: mono, fontSize: 8, color: K.secondary, whiteSpace: "nowrap", flexShrink: 0 }}>{preset.advice}</span>
+                </span>
+                <span style={{ fontFamily: mono, fontSize: 8, color: K.inkMute }}>{preset.sub}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{ padding: "4px 16px 2px" }}>
           {PERSONAL_VARS.map((d) => {
             const on = sel.includes(d.id);
@@ -668,9 +736,9 @@ function VariablePicker({ initial, vars, setVars, onClose, onConfirm }: { initia
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, paddingLeft: 33 }}>
                   {d.kind === "slider" ? (
                     <>
-                      <input type="range" min={d.min} max={d.max} step={d.step} value={vars[d.id] as number}
-                        onChange={(e) => setVal(d.id, parseFloat(e.target.value))}
-                        style={{ flex: 1, accentColor: on ? K.primary : K.inkMute }} />
+                      <span style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                        <RangeInput min={d.min!} max={d.max!} step={d.step!} value={vars[d.id] as number} onChange={(v) => setVal(d.id, v)} />
+                      </span>
                       <NumberField d={d} value={vars[d.id] as number} onCommit={(v) => setVal(d.id, v)} />
                     </>
                   ) : (
@@ -1132,10 +1200,20 @@ function FoldSection({ title, defaultOpen, children, tone }: { title: string; de
     </div>
   );
 }
+// Custom range slider — green (personal) theme; filled track via an inline gradient,
+// thumb/track shape via the .trace-range style at the root. Reused everywhere.
+function RangeInput({ min, max, step, value, onChange }: { min: number; max: number; step: number; value: number; onChange: (v: number) => void }) {
+  const pct = max > min ? Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100)) : 0;
+  return (
+    <input type="range" className="trace-range" min={min} max={max} step={step} value={value}
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      style={{ width: "100%", background: `linear-gradient(to right, ${K.good} 0%, ${K.good} ${pct}%, ${K.ruleSoft} ${pct}%, ${K.ruleSoft} 100%)` }} />
+  );
+}
 function Slider({ label, val, min, max, step, value, onChange }: { label: string; val: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void }) {
   return (<>
     <label style={{ fontFamily: mono, fontSize: 8.5, color: K.meta, textTransform: "uppercase", display: "flex", justifyContent: "space-between", margin: "7px 0 2px" }}><span>{label}</span><span>{val}</span></label>
-    <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} style={{ width: "100%", accentColor: K.secondary }} />
+    <RangeInput min={min} max={max} step={step} value={value} onChange={onChange} />
   </>);
 }
 function Empty({ text }: { text: string }) { return <div style={{ fontFamily: mono, fontSize: 10, color: K.inkMute, lineHeight: 1.5 }}>{text}</div>; }

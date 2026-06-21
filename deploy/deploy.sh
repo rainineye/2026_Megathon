@@ -32,7 +32,9 @@ SSHOPT="-o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o Use
 cd "$(dirname "$0")/.."   # repo root
 
 echo "==> Building frontend (same-origin: API at /api)"
-( cd app && VITE_TRACE_API_URL=/api cmd //c "npm run build" )
+# Call npm directly (Git Bash resolves the `npm` shim). Do NOT route through
+# `cmd //c` — `cmd` isn't on PATH when bash is launched from PowerShell.
+( cd app && VITE_TRACE_API_URL=/api npm run build )
 
 echo "==> Streaming dist + engine + fixtures + requirements.txt to $SSH_HOST:$REMOTE"
 ( cd app && tar czf - --exclude='engine/__pycache__' dist engine fixtures requirements.txt ) \
