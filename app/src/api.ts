@@ -1,4 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_TRACE_API_URL ?? "http://127.0.0.1:8000";
+// Endpoint paths below already include the "/api/..." prefix, so the base must
+// be an ORIGIN with no /api suffix (or "" for same-origin) — NOT "/api", which
+// would produce a doubled "/api/api/...". Prod is served same-origin behind
+// Caddy, so the base is "" there; dev hits the local uvicorn on :8000.
+const API_BASE_URL =
+  import.meta.env.VITE_TRACE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 const API_TIMEOUT_MS = 7000;
 
 async function fetchWithTimeout(input: string, init?: RequestInit): Promise<Response> {

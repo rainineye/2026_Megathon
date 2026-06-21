@@ -14,6 +14,12 @@ megathon.traceintelligence.io {
 	# Everything else: static Vite build + SPA fallback.
 	handle {
 		root * /srv/megathon/dist
+		# index.html must never be cached, or a browser can keep an old index
+		# pointing at a deleted/old hashed bundle (we hit exactly this: a stale
+		# bundle had the wrong API URL baked in -> offline fallback). Hashed
+		# assets under /assets are immutable and cache fine by default.
+		@html path / /index.html
+		header @html Cache-Control "no-cache, must-revalidate"
 		try_files {path} /index.html
 		file_server
 	}

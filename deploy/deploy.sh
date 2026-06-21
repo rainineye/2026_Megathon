@@ -31,14 +31,18 @@ SSHOPT="-o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o Use
 
 cd "$(dirname "$0")/.."   # repo root
 
-echo "==> Building frontend (same-origin: API at /api)"
+echo "==> Building frontend (same-origin)"
 # Call npm directly (Git Bash resolves the `npm` shim). Do NOT route through
 # `cmd //c` — `cmd` isn't on PATH when bash is launched from PowerShell.
-( cd app && VITE_TRACE_API_URL=/api npm run build )
+# Do NOT set VITE_TRACE_API_URL: api.ts defaults to same-origin ("") in a prod
+# build and the endpoint paths already include /api (setting "/api" doubled it).
+( cd app && unset VITE_TRACE_API_URL && npm run build )
 
 echo "==> Streaming dist + engine + fixtures + requirements.txt to $SSH_HOST:$REMOTE"
+# rm dist first so old hashed bundles don't pile up (a stale one once baked the
+# wrong API URL and clients cached it -> offline fallback).
 ( cd app && tar czf - --exclude='engine/__pycache__' dist engine fixtures requirements.txt ) \
-  | ssh $SSHOPT "$SSH_HOST" "mkdir -p $REMOTE && tar xzf - -C $REMOTE"
+  | ssh $SSHOPT "$SSH_HOST" "mkdir -p $REMOTE && rm -rf $REMOTE/dist && tar xzf - -C $REMOTE"
 
 echo "==> Installing deps + restarting API"
 ssh $SSHOPT "$SSH_HOST" "cd $REMOTE && [ -d venv ] || python3 -m venv venv; ./venv/bin/pip install -q -r requirements.txt && systemctl restart trace-api && sleep 2 && systemctl is-active trace-api && curl -s http://127.0.0.1:8000/api/health"

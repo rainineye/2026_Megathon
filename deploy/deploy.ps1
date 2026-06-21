@@ -20,8 +20,11 @@ $tgzName  = "megathon-deploy.tgz"
 $tgz      = Join-Path $env:TEMP $tgzName
 $SSHOPT   = @("-o","StrictHostKeyChecking=accept-new","-o","ConnectTimeout=20")
 
-Write-Host "==> Building frontend (same-origin: API at /api)"
-$env:VITE_TRACE_API_URL = "/api"
+Write-Host "==> Building frontend (same-origin)"
+# Do NOT set VITE_TRACE_API_URL: api.ts defaults to same-origin ("") in a prod
+# build, and the endpoint paths already include /api. Setting it to "/api" here
+# caused doubled /api/api/* 404s. Clear any stray value from the shell.
+Remove-Item Env:VITE_TRACE_API_URL -ErrorAction SilentlyContinue
 Push-Location $app
 try {
     npm run build
@@ -46,7 +49,9 @@ try {
 }
 
 Write-Host "==> Extracting + installing deps + restarting API"
-$remote = "mkdir -p $REMOTE && tar xzf /tmp/$tgzName -C $REMOTE && rm -f /tmp/$tgzName && cd $REMOTE && ([ -d venv ] || python3 -m venv venv) && ./venv/bin/pip install -q -r requirements.txt && systemctl restart trace-api && sleep 2 && systemctl is-active trace-api && curl -s http://127.0.0.1:8000/api/health"
+# rm dist first so old hashed bundles don't pile up (a stale one once baked the
+# wrong API URL and clients cached it -> offline fallback).
+$remote = "mkdir -p $REMOTE && rm -rf $REMOTE/dist && tar xzf /tmp/$tgzName -C $REMOTE && rm -f /tmp/$tgzName && cd $REMOTE && ([ -d venv ] || python3 -m venv venv) && ./venv/bin/pip install -q -r requirements.txt && systemctl restart trace-api && sleep 2 && systemctl is-active trace-api && curl -s http://127.0.0.1:8000/api/health"
 ssh @SSHOPT $SSH_HOST $remote
 if ($LASTEXITCODE -ne 0) { throw "remote deploy failed" }
 
