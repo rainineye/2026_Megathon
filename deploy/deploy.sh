@@ -31,6 +31,13 @@ SSHOPT="-o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o Use
 
 cd "$(dirname "$0")/.."   # repo root
 
+# Sync the pitch deck into the build so it ships at /pitch.html (Vite copies
+# public/ verbatim into dist/).
+if [ -f deck/trace-pitch.html ]; then
+  mkdir -p app/public && cp deck/trace-pitch.html app/public/pitch.html
+  echo "==> Synced deck -> public/pitch.html"
+fi
+
 echo "==> Building frontend (same-origin)"
 # Call npm directly (Git Bash resolves the `npm` shim). Do NOT route through
 # `cmd //c` — `cmd` isn't on PATH when bash is launched from PowerShell.

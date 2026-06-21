@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trace — Pitch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Fraunces:opsz,wght@9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --ink:#0E0E0E; --paper:#F6F4EF; --rust:#B8902E;
+    --gridL:rgba(14,14,14,.07); --gridD:rgba(246,244,239,.08); }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;overflow:hidden;font-family:'Archivo',system-ui,sans-serif}
+  .stage{position:fixed;inset:0;display:grid;place-items:center;background:#000}
+  .deck{position:relative;width:100%;height:100%;max-width:calc(100vh*16/9);max-height:calc(100vw*9/16);
+    aspect-ratio:16/9;container-type:size;overflow:hidden}
+  .track{display:flex;width:500%;height:100%;transition:transform .55s cubic-bezier(.76,0,.18,1)}
+  .slide{position:relative;width:20%;height:100%;padding:5.5cqh 5cqw;display:flex;flex-direction:column;overflow:hidden}
+  .light{background:var(--paper);color:var(--ink);
+    background-image:linear-gradient(var(--gridL) 1px,transparent 1px),linear-gradient(90deg,var(--gridL) 1px,transparent 1px);background-size:4cqw 4cqw}
+  .dark{background:var(--ink);color:var(--paper);
+    background-image:linear-gradient(var(--gridD) 1px,transparent 1px),linear-gradient(90deg,var(--gridD) 1px,transparent 1px);background-size:4cqw 4cqw}
+  .mono{font-family:'JetBrains Mono',monospace}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;flex:0 0 auto;
+    font-family:'JetBrains Mono',monospace;font-size:1.1cqw;letter-spacing:.16em;line-height:1.45;opacity:.9}
+  .top .r{text-align:right}
+  .mid{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:2.6cqh;overflow:hidden}
+  .foot{display:flex;justify-content:space-between;align-items:flex-end;flex:0 0 auto;
+    font-family:'JetBrains Mono',monospace;font-size:1.05cqw;letter-spacing:.12em;padding-top:2cqh}
+  .foot .steps{display:flex;gap:2.6cqw}
+  .foot .steps b{color:var(--rust);font-weight:700;margin-right:.4em}
+  .kick{font-family:'JetBrains Mono',monospace;font-size:1.15cqw;letter-spacing:.3em;color:var(--rust);font-weight:500}
+  .h{font-weight:900;text-transform:uppercase;line-height:.94;letter-spacing:-.02em;font-size:6cqw}
+  .h .o{color:transparent;-webkit-text-stroke:.13cqw currentColor}
+  .h .rust{color:var(--rust)}
+  .sub{font-family:'JetBrains Mono',monospace;font-size:1.45cqw;line-height:1.55;max-width:62cqw}
+  .sub b{color:var(--rust);font-weight:700}
+  .wordmark{font-family:'Fraunces',serif;font-weight:800;font-size:1.9cqw;letter-spacing:-.01em;display:flex;align-items:baseline;gap:.8cqw}
+  .wordmark em{font-family:'JetBrains Mono',monospace;font-style:normal;font-size:.82cqw;letter-spacing:.3em;opacity:.7}
+  .term{border:.13cqw solid currentColor;padding:2cqh 2cqw;max-width:58cqw;font-family:'JetBrains Mono',monospace}
+  .term .t{font-size:1.05cqw;letter-spacing:.24em;opacity:.65;margin-bottom:1.3cqh}
+  .term .b{font-size:1.4cqw;line-height:1.65}
+  .term .s{font-size:1cqw;letter-spacing:.22em;margin-top:1.4cqh;text-align:right;color:var(--rust)}
+  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:2.2cqw;max-width:84cqw}
+  .col{border-top:.18cqw solid var(--rust);padding-top:1.3cqh}
+  .col .n{font-family:'JetBrains Mono',monospace;font-size:1cqw;letter-spacing:.2em;color:var(--rust)}
+  .col .k{font-weight:900;text-transform:uppercase;font-size:2cqw;margin:.7cqh 0;letter-spacing:-.01em}
+  .col .d{font-family:'JetBrains Mono',monospace;font-size:1.12cqw;line-height:1.45;opacity:.82}
+  .decomp{display:flex;align-items:center;flex-wrap:wrap;gap:1cqw;font-family:'JetBrains Mono',monospace;font-size:1.25cqw;letter-spacing:.06em}
+  .decomp .f{border:.12cqw solid currentColor;padding:.7cqh .9cqw}
+  .decomp .ar{color:var(--rust);font-size:1.8cqw}
+  .decomp .price{border:.16cqw solid var(--rust);color:var(--rust);font-weight:700;padding:.7cqh 1cqw}
+  .strip{border-left:.3cqw solid var(--rust);padding:.4cqh 0 .4cqh 1.4cqw;font-family:'JetBrains Mono',monospace;
+    font-size:1.3cqw;line-height:1.6;max-width:86cqw}
+  .strip b{color:var(--rust);font-weight:700}
+  .hero{font-family:'Fraunces',serif;font-weight:800;font-size:11cqw;color:var(--rust);line-height:.9;letter-spacing:-.02em}
+  .links{font-family:'JetBrains Mono',monospace;font-size:1.7cqw;line-height:2.1;display:flex;flex-direction:column;gap:.6cqh}
+  .links a{color:inherit;text-decoration:none;display:flex;align-items:baseline;gap:1.2cqw}
+  .links a .ar{color:var(--rust);min-width:7cqw}
+  .links a u{text-decoration:none;border-bottom:.1cqw solid var(--rust);padding-bottom:.2cqh}
+  .links .note{color:var(--rust);font-size:1cqw;letter-spacing:.18em;margin-left:8.2cqw;opacity:.9}
+  .qr-mid{flex-direction:row;align-items:center;justify-content:space-between;gap:5cqw}
+  .qr-mid .left{display:flex;flex-direction:column;gap:2.4cqh;flex:1 1 auto;min-width:0}
+  .qr-mid .right{display:flex;flex-direction:column;align-items:center;gap:1.3cqh;flex:0 0 auto}
+  .qrbox{background:#fff;padding:1.5cqw;border:.22cqw solid var(--rust)}
+  #qr img,#qr canvas{display:block;width:32cqw!important;height:32cqw!important;image-rendering:pixelated}
+  .qrcap{font-family:'JetBrains Mono',monospace;font-size:1.15cqw;letter-spacing:.22em;color:var(--rust)}
+  .beta{font-family:'JetBrains Mono',monospace;font-size:1.45cqw;letter-spacing:.05em;border-top:.16cqw solid var(--rust);padding-top:1.6cqh}
+  .beta a{color:inherit;text-decoration:none}
+  .beta u{text-decoration:none;border-bottom:.12cqw solid var(--rust);padding-bottom:.2cqh}
+  .ui{position:fixed;z-index:5;font-family:'JetBrains Mono',monospace;color:#9a9a9a;font-size:12px;letter-spacing:.12em}
+  .ui.count{left:18px;bottom:14px}
+  .ui.hint{right:18px;bottom:14px}
+  .dots{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:9px;z-index:5}
+  .dot{width:9px;height:9px;border:1px solid #888;background:transparent;cursor:pointer;padding:0}
+  .dot.on{background:var(--rust);border-color:var(--rust)}
+  .nav{position:fixed;top:0;height:100%;width:11%;z-index:4;cursor:pointer;border:0;background:transparent}
+  .nav.prev{left:0}.nav.next{right:0}
+  @media (max-width:740px){ .ui.hint{display:none} }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="deck">
+    <div class="track" id="track">
+
+      <section class="slide light" style="padding:5cqh 3.4cqw">
+        <div class="top"><div>TRACE_PERSONAL // DECISION_INTELLIGENCE</div>
+          <div class="r">VERITAS_HACK_2026_AMS<br/>CONTESTED_REALITY_PROTOCOL</div></div>
+        <div class="mid" style="gap:1.8cqh;justify-content:center">
+          <div class="wordmark">Trace <em>PERSONAL</em></div>
+          <div style="display:flex;flex-direction:column">
+            <div class="h" style="font-size:8.4cqw;line-height:.92">FROM <span class="rust">0/1</span><br/>TO THE MESSY,<br/>AMBIGUOUS</div>
+            <svg viewBox="0 0 560 120" preserveAspectRatio="xMinYMid meet" style="height:8.7cqw;width:100%;display:block;margin-top:-1.7cqh;overflow:visible" role="img" aria-label="REALITY.">
+              <text x="0" y="98" font-family="Archivo, sans-serif" font-weight="900" font-size="118" letter-spacing="-3" fill="none" stroke="#0E0E0E" stroke-width="2.4">REALITY.</text>
+            </svg>
+          </div>
+          <div class="sub" style="font-size:1.25cqw">Trace gives back the structure that 0/1 throws away — making contested, multidimensional truth <b>traceable</b>.</div>
+        </div>
+        <div class="foot"><div class="steps"><span class="mono">CONTESTED REALITY · CAUSAL STRUCTURE · TRACEABLE EVIDENCE</span></div><div>v1.0</div></div>
+      </section>
+
+      <section class="slide dark">
+        <div class="top"><div>01 // THE_PROBLEM</div><div class="r">STATUS: 0/1 &lt;&gt; MULTI-DIMENSIONAL</div></div>
+        <div class="mid">
+          <div class="kick">THE PROBLEM</div>
+          <div style="display:flex;flex-direction:column">
+            <div class="h" style="font-size:5.6cqw;line-height:.92">TRUTH</div>
+            <svg viewBox="0 0 300 120" preserveAspectRatio="xMinYMid meet" style="height:5.7cqw;width:100%;display:block;margin:-1.4cqh 0 -1.6cqh;overflow:visible" role="img" aria-label="ISN'T">
+              <text x="0" y="98" font-family="Archivo, sans-serif" font-weight="900" font-size="118" letter-spacing="-3" fill="none" stroke="#F6F4EF" stroke-width="2.6">ISN'T</text>
+            </svg>
+            <div class="h" style="font-size:5.6cqw;line-height:.92"><span class="rust">BINARY.</span></div>
+          </div>
+          <div class="term">
+            <div class="t">PROBLEM_STATEMENT</div>
+            <div class="b">What actually matters is contested and multidimensional. But media, fact-checks, and AI all do one thing — flatten it into a single 0/1 label: true / false / "BUY". That fluency feels like clarity; it's manufactured certainty — a smaller thing in the costume of an answer, built by discarding every dimension it couldn't hold.</div>
+            <div class="s">SYS_FAULT</div>
+          </div>
+        </div>
+        <div class="foot"><div class="steps"><span class="mono">A LABEL ISN'T AN ANSWER — IT'S MANUFACTURED CERTAINTY</span></div><div>02</div></div>
+      </section>
+
+      <section class="slide light">
+        <div class="top"><div>02 // THE_MECHANISM</div><div class="r">ENGINE: DETERMINISTIC</div></div>
+        <div class="mid">
+          <div class="kick">HOW TRACE WORKS</div>
+          <div class="h" style="font-size:5.4cqw">CONDITION.<br/><span class="o">DON'T</span> <span class="rust">COLLAPSE.</span></div>
+          <div class="sub">Expose the structure of the question instead of reducing it to a verdict. The Trace engine recomputes deterministically in the background.</div>
+          <div class="cols">
+            <div class="col"><div class="n">/01</div><div class="k">COLLABORATIVE<br/>CAUSAL GRAPH</div><div class="d">A shared, expert-built causal model of the domain, fed by live facts.</div></div>
+            <div class="col"><div class="n">/02</div><div class="k">INPUT<br/>VARIABLES</div><div class="d">Inject your own variables; the graph re-weights for you — never mutating the shared evidence.</div></div>
+            <div class="col"><div class="n">/03</div><div class="k">WATCHING<br/>INDICATORS</div><div class="d">Model-derived thresholds — the dividing lines that flip your read, and what to monitor.</div></div>
+          </div>
+        </div>
+        <div class="foot"><div class="steps"><span class="mono">CONDITION, DON'T COLLAPSE · PROVENANCE BEFORE NARRATIVE</span></div><div>03</div></div>
+      </section>
+
+      <section class="slide dark">
+        <div class="top"><div>03 // THE_CASE</div><div class="r">DOMAIN: NL_HOUSING · ENGINE_LIVE</div></div>
+        <div class="mid">
+          <div class="kick">THE CASE — NL HOUSING</div>
+          <div class="h" style="font-size:4.7cqw">WHAT'S MOVING<br/>THE DUTCH<br/><span class="rust">HOUSING MARKET?</span></div>
+          <div class="decomp">
+            <span class="f">FINANCING</span><span class="f">SUPPLY</span><span class="f">DEMAND</span><span class="f">POLICY</span><span class="f">REGIONAL</span>
+            <span class="ar">→</span><span class="price">HOUSE PRICE</span>
+          </div>
+          <div class="strip">Trace decomposes it into <b>5 competing market states</b>, each traced to sources — <b>↑87%</b> buy-pressure vs <b>↓13%</b>, shortage <b>401k→453k '27</b>. Condition with <b>your</b> budget · horizon · risk → <b>buy / wait / rent</b>, and exactly what to monitor.</div>
+        </div>
+        <div class="foot"><div class="steps"><span class="mono">megathon.traceintelligence.io — LIVE DEMO</span></div><div>04</div></div>
+      </section>
+
+      <section class="slide dark">
+        <div class="top"><div>TRACE_PERSONAL // DIVE_IN</div><div class="r">VERITAS_HACK_2026</div></div>
+        <div class="mid qr-mid">
+          <div class="left">
+            <div class="kick">FOLLOW · DEEP DIVE</div>
+            <div class="h" style="font-size:5.6cqw">DIVE INTO<br/>THE TRACE<br/><span class="rust">METHOD.</span></div>
+            <div class="sub">Follow <b>@traceintelli</b> to know more — and read the deep dive into the Trace Method. <b>Come dive in.</b></div>
+            <div class="beta">SIGN UP FOR BETA TESTING&nbsp;&nbsp;→&nbsp;&nbsp;<a href="https://traceintelligence.io" target="_blank" rel="noopener"><u>traceintelligence.io</u></a></div>
+          </div>
+          <div class="right">
+            <a href="https://x.com/TraceIntelli/status/2068602791569064324" target="_blank" rel="noopener" class="qrbox"><div id="qr"></div></a>
+            <div class="qrcap">SCAN TO DIVE IN ↗</div>
+          </div>
+        </div>
+        <div class="foot"><div class="steps"><span class="mono">TRUTH, MADE TRACEABLE</span></div><div class="rust" style="color:var(--rust)">SYS_READY</div></div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<button class="nav prev" id="prev" aria-label="Previous slide"></button>
+<button class="nav next" id="next" aria-label="Next slide"></button>
+<div class="ui count" id="count">01 / 05</div>
+<div class="ui hint">← → NAVIGATE · F FULLSCREEN</div>
+<div class="dots" id="dots"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  try{ if(window.QRCode){ new QRCode(document.getElementById('qr'), { text:'https://x.com/TraceIntelli/status/2068602791569064324', width:620, height:620, colorDark:'#0E0E0E', colorLight:'#FFFFFF', correctLevel:QRCode.CorrectLevel.M }); } }catch(e){}
+  var n=5, i=0;
+  var track=document.getElementById('track'), count=document.getElementById('count'), dots=document.getElementById('dots');
+  for(var d=0; d<n; d++){ var b=document.createElement('button'); b.className='dot'; b.dataset.i=d;
+    b.addEventListener('click', function(e){ go(+e.target.dataset.i); }); dots.appendChild(b); }
+  function pad(x){ return (x<9?'0':'')+(x+1); }
+  function go(k){ i=(k+n)%n; track.style.transform='translateX(-'+(i*20)+'%)';
+    count.textContent=pad(i)+' / '+pad(n-1);
+    var ds=dots.children; for(var j=0;j<ds.length;j++) ds[j].className='dot'+(j===i?' on':''); }
+  document.getElementById('next').addEventListener('click', function(){ go(i+1); });
+  document.getElementById('prev').addEventListener('click', function(){ go(i-1); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){ e.preventDefault(); go(i+1); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); go(i-1); }
+    else if(e.key==='f'||e.key==='F'){ var el=document.documentElement;
+      if(document.fullscreenElement){ document.exitFullscreen(); } else if(el.requestFullscreen){ el.requestFullscreen(); } }
+    else if(e.key==='Home'){ go(0); } else if(e.key==='End'){ go(n-1); }
+  });
+  go(0);
+</script>
+</body>
+</html>

@@ -25,6 +25,14 @@ Write-Host "==> Building frontend (same-origin)"
 # build, and the endpoint paths already include /api. Setting it to "/api" here
 # caused doubled /api/api/* 404s. Clear any stray value from the shell.
 Remove-Item Env:VITE_TRACE_API_URL -ErrorAction SilentlyContinue
+# Sync the pitch deck into the build so it ships at /pitch.html (public/ is
+# copied verbatim into dist/ by Vite).
+$deckSrc = Join-Path $repo "deck/trace-pitch.html"
+if (Test-Path $deckSrc) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $app "public") | Out-Null
+    Copy-Item $deckSrc (Join-Path $app "public/pitch.html") -Force
+    Write-Host "==> Synced deck -> public/pitch.html"
+}
 Push-Location $app
 try {
     npm run build
