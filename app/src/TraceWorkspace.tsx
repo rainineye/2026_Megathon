@@ -276,7 +276,7 @@ export default function TraceWorkspace() {
 
   return (
     <div ref={rootRef} style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: K.paper, color: K.ink, fontFamily: sans, overflow: "hidden" }}>
-      <style>{`.trace-range{-webkit-appearance:none;appearance:none;height:5px;border-radius:999px;outline:none;cursor:pointer}.trace-range::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:transparent}.trace-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:${K.good};border:2px solid ${K.paper};box-shadow:0 1px 4px rgba(0,0,0,.28);margin-top:-5px;cursor:pointer}.trace-range::-moz-range-track{height:5px;border-radius:999px;background:transparent}.trace-range::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:${K.good};border:2px solid ${K.paper};box-shadow:0 1px 4px rgba(0,0,0,.28);cursor:pointer}`}</style>
+      <style>{`.trace-range{-webkit-appearance:none;appearance:none;height:4px;border-radius:999px;outline:none;cursor:pointer}.trace-range::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:transparent}.trace-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:${K.paper};border:2px solid ${K.good};box-shadow:0 1px 3px rgba(0,0,0,.22);margin-top:-5.5px;cursor:pointer}.trace-range::-moz-range-track{height:4px;border-radius:999px;background:transparent}.trace-range::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:${K.paper};border:2px solid ${K.good};box-shadow:0 1px 3px rgba(0,0,0,.22);cursor:pointer}`}</style>
       <Header source={source} onRun={runProtocol} running={running} dirty={dirty}
         onFullscreen={toggleFullscreen} isFs={isFs} onTogglePanels={togglePanels} panelsOn={panelsOn} />
       <div ref={bodyRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
@@ -292,9 +292,8 @@ export default function TraceWorkspace() {
         {rightOn ? (
           <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 360, background: K.paper, borderLeft: `1px solid ${K.rule}`, display: "flex", flexDirection: "column", zIndex: 8 }}>
             <style>{`.trace-scroll{scrollbar-width:thin;scrollbar-color:rgba(122,106,84,.22) transparent}.trace-scroll::-webkit-scrollbar{width:5px;height:5px}.trace-scroll::-webkit-scrollbar-track{background:transparent;border:none}.trace-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.trace-scroll::-webkit-scrollbar-thumb{background:rgba(122,106,84,.2);border-radius:99px}.trace-scroll:hover::-webkit-scrollbar-thumb{background:rgba(122,106,84,.4)}.trace-scroll::-webkit-scrollbar-corner{background:transparent}`}</style>
-            {/* INPUTS — primary controls, on top (its own light label; the padded section) */}
+            {/* INPUTS — primary controls, on top (no redundant label; ADD A VARIABLE self-explains) */}
             <div className="trace-scroll" style={{ flexShrink: 0, padding: "16px 12px 13px", display: "flex", flexDirection: "column", gap: 10, maxHeight: "56%", overflowY: "auto" }}>
-              <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, textTransform: "uppercase", color: K.meta }}>Inputs</span>
               <AddVariablesCTA onPick={() => setPicker(true)} />
               {activeVars.length > 0 && (
                 <YourVariables active={activeVars} vars={vars} setVars={setVars} onManage={() => setPicker(true)}
@@ -1207,7 +1206,7 @@ function RangeInput({ min, max, step, value, onChange }: { min: number; max: num
   return (
     <input type="range" className="trace-range" min={min} max={max} step={step} value={value}
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      style={{ width: "100%", background: `linear-gradient(to right, ${K.good} 0%, ${K.good} ${pct}%, ${K.ruleSoft} ${pct}%, ${K.ruleSoft} 100%)` }} />
+      style={{ width: "100%", background: `linear-gradient(to right, ${K.good} 0%, ${K.good} ${pct}%, ${K.paperDeep} ${pct}%, ${K.paperDeep} 100%)` }} />
   );
 }
 function Slider({ label, val, min, max, step, value, onChange }: { label: string; val: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void }) {
