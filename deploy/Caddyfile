@@ -18,7 +18,7 @@ megathon.traceintelligence.io {
 		# pointing at a deleted/old hashed bundle (we hit exactly this: a stale
 		# bundle had the wrong API URL baked in -> offline fallback). Hashed
 		# assets under /assets are immutable and cache fine by default.
-		@html path / /index.html
+		@html path / /index.html /pitch.html
 		header @html Cache-Control "no-cache, must-revalidate"
 		try_files {path} /index.html
 		file_server
