@@ -270,7 +270,7 @@ export default function CanvasGraph({
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean; lastX?: number; lastY?: number } | null>(null);
-  const pan = useRef<{ sx: number; sy: number; lastX: number; lastY: number; moved: boolean; clearOnClick: boolean; rect: DOMRect } | null>(null);
+  const pan = useRef<{ sx: number; sy: number; lastX: number; lastY: number; moved: boolean; group: FactorGroup | null; rect: DOMRect } | null>(null);
   const panRaf = useRef<number | null>(null);
   const panEvent = useRef<{ clientX: number; clientY: number } | null>(null);
   const wheelRaf = useRef<number | null>(null);
@@ -284,14 +284,14 @@ export default function CanvasGraph({
 
   const byId = (id: string) => factors.find((factor) => factor.id === id);
   const incidentEdges = (id: string) => edges.filter((edge) => edge.from === id || edge.to === id);
-  const insideAreaBand = (point: { x: number; y: number }) => {
+  const groupAt = (point: { x: number; y: number }): FactorGroup | null => {
     const world = { x: (point.x - cam.x) / cam.k, y: (point.y - cam.y) / cam.k };
-    return GROUPS.some((group) =>
+    return GROUPS.find((group) =>
       world.x >= group.x &&
       world.x <= group.x + group.w &&
       world.y >= group.y &&
       world.y <= group.y + group.h
-    );
+    )?.id ?? null;
   };
 
   const vb = useCallback((event: { clientX: number; clientY: number }) => {
@@ -400,8 +400,13 @@ export default function CanvasGraph({
       }
       dragEvent.current = null;
       if (drag.current && !drag.current.moved) onSelect(drag.current.id);
-      if (pan.current && !pan.current.moved && pan.current.clearOnClick && (sel || groupFocus)) {
-        onClearFocus?.();
+      if (pan.current && !pan.current.moved) {
+        // Non-drag click on empty canvas. If anything is focused, exit — INCLUDING
+        // clicks on the empty space INSIDE an area band, not just outside it. Only
+        // from the unfocused overview does a band-background click focus that lane.
+        // Handled here (not the band's onClick) so a pan-release never counts as a click.
+        if (sel || groupFocus) onClearFocus?.();
+        else if (pan.current.group) onSelectGroup?.(pan.current.group);
       }
       if (drag.current) onDragNode?.(null);
       drag.current = null;
@@ -466,7 +471,7 @@ export default function CanvasGraph({
           lastX: event.clientX,
           lastY: event.clientY,
           moved: false,
-          clearOnClick: !insideAreaBand(point),
+          group: groupAt(point),
           rect: svgRef.current!.getBoundingClientRect()
         };
       }}
@@ -491,7 +496,7 @@ export default function CanvasGraph({
               ? (factors.some((factor) => factor.group === group.id && factor.id === focus) ? 1 : 0.45)
               : 1;
           return (
-          <g key={group.id} opacity={gOpacity} onClick={() => onSelectGroup?.(group.id)} style={{ cursor: "pointer" }}>
+          <g key={group.id} opacity={gOpacity}>
             <rect
               x={group.x}
               y={group.y}
