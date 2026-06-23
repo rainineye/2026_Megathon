@@ -269,8 +269,14 @@ export default function CanvasGraph({
   onSelectGroup
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean } | null>(null);
-  const pan = useRef<{ sx: number; sy: number; cx: number; cy: number; moved: boolean; clearOnClick: boolean } | null>(null);
+  const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean; lastX?: number; lastY?: number } | null>(null);
+  const pan = useRef<{ sx: number; sy: number; lastX: number; lastY: number; moved: boolean; clearOnClick: boolean; rect: DOMRect } | null>(null);
+  const panRaf = useRef<number | null>(null);
+  const panEvent = useRef<{ clientX: number; clientY: number } | null>(null);
+  const wheelRaf = useRef<number | null>(null);
+  const wheelAcc = useRef<{ factor: number; x: number; y: number } | null>(null);
+  const dragRaf = useRef<number | null>(null);
+  const dragEvent = useRef<{ clientX: number; clientY: number } | null>(null);
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const focus = sel || hover;
   // node-focus (sel/hover) takes precedence; otherwise a clicked lane focuses its whole group.
@@ -296,30 +302,103 @@ export default function CanvasGraph({
     };
   }, []);
 
+  // Suppress hover while panning or dragging: hovering nodes/edges mid-gesture
+  // would fire setHover/setHoverEdge → whole-workspace re-render storm + focus
+  // dimming flicker. (Generalizes the existing !drag.current guards to pan too.)
+  const hoverNode = (id: string | null) => { if (pan.current || drag.current) return; onHover(id); };
+  const hoverEdgeSet = (k: string | null) => { if (pan.current || drag.current) return; setHoverEdge(k); };
+
   useEffect(() => {
     const move = (event: PointerEvent) => {
       if (drag.current) {
-        const point = vb(event);
-        const nx = snap(point.x - drag.current.ox);
-        const ny = snap(point.y - drag.current.oy);
-        const factor = byId(drag.current.id);
-        if (factor && (nx !== factor.x || ny !== factor.y)) {
-          drag.current.moved = true;
-          onMove(drag.current.id, nx, ny);
+        // Coalesce node-drag to one update per frame — onMove → setFactors re-rendered
+        // the whole workspace on every pointermove, and vb() forced a layout read each
+        // time. Now both happen at most once per frame.
+        dragEvent.current = { clientX: event.clientX, clientY: event.clientY };
+        if (dragRaf.current == null) {
+          dragRaf.current = requestAnimationFrame(() => {
+            dragRaf.current = null;
+            const d = drag.current;
+            const e2 = dragEvent.current;
+            if (!d || !e2) return;
+            const point = vb(e2);
+            const nx = snap(point.x - d.ox);
+            const ny = snap(point.y - d.oy);
+            // Track the last snapped position in the drag ref, not via byId(factors):
+            // under React's async commit the factors prop isn't guaranteed fresh on the
+            // next frame, which would fire redundant onMove calls and waste re-renders.
+            if (d.lastX === undefined) { const f = byId(d.id); d.lastX = f?.x ?? nx; d.lastY = f?.y ?? ny; }
+            if (nx !== d.lastX || ny !== d.lastY) {
+              d.moved = true;
+              d.lastX = nx;
+              d.lastY = ny;
+              onMove(d.id, nx, ny);
+            }
+          });
         }
       } else if (pan.current) {
-        const rect = svgRef.current!.getBoundingClientRect();
         if (Math.abs(event.clientX - pan.current.sx) > 3 || Math.abs(event.clientY - pan.current.sy) > 3) {
           pan.current.moved = true;
         }
-        setCam((c) => ({
-          ...c,
-          x: pan.current!.cx + ((event.clientX - pan.current!.sx) / rect.width) * VBW,
-          y: pan.current!.cy + ((event.clientY - pan.current!.sy) / rect.height) * VBH
-        }));
+        // Coalesce pan to one update per animation frame and reuse the rect
+        // captured at pan-start. Calling setCam + getBoundingClientRect on every
+        // pointermove re-rendered the whole workspace and thrashed layout — the
+        // main source of drag-pan jank.
+        panEvent.current = { clientX: event.clientX, clientY: event.clientY };
+        if (panRaf.current == null) {
+          panRaf.current = requestAnimationFrame(() => {
+            panRaf.current = null;
+            const p = pan.current;
+            const e2 = panEvent.current;
+            if (!p || !e2) return;
+            // Apply an INCREMENTAL delta to the LIVE cam (functional updater), not an
+            // absolute base captured at pointerdown. So a drag that interrupts a camera
+            // glide takes over from wherever the glide currently is — no jump.
+            const dx = ((e2.clientX - p.lastX) / p.rect.width) * VBW;
+            const dy = ((e2.clientY - p.lastY) / p.rect.height) * VBH;
+            p.lastX = e2.clientX;
+            p.lastY = e2.clientY;
+            setCam((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
+          });
+        }
       }
     };
     const up = () => {
+      // Flush the final pan position the pending frame would have committed,
+      // then drop the scheduled frame.
+      if (panRaf.current != null) {
+        cancelAnimationFrame(panRaf.current);
+        panRaf.current = null;
+        const p = pan.current;
+        const e2 = panEvent.current;
+        if (p && e2 && p.moved) {
+          const dx = ((e2.clientX - p.lastX) / p.rect.width) * VBW;
+          const dy = ((e2.clientY - p.lastY) / p.rect.height) * VBH;
+          setCam((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
+        }
+      }
+      panEvent.current = null;
+      // Flush + drop any pending node-drag frame so the final position lands, and a
+      // release that never moved still counts as a click (moved stays false → onSelect).
+      if (dragRaf.current != null) {
+        cancelAnimationFrame(dragRaf.current);
+        dragRaf.current = null;
+        const d = drag.current;
+        const e2 = dragEvent.current;
+        if (d && e2) {
+          const point = vb(e2);
+          const nx = snap(point.x - d.ox);
+          const ny = snap(point.y - d.oy);
+          if (d.lastX === undefined) { const f = byId(d.id); d.lastX = f?.x ?? nx; d.lastY = f?.y ?? ny; }
+          if (nx !== d.lastX || ny !== d.lastY) {
+            d.moved = true;
+            d.lastX = nx;
+            d.lastY = ny;
+            onMove(d.id, nx, ny);
+          }
+        }
+      }
+      dragEvent.current = null;
       if (drag.current && !drag.current.moved) onSelect(drag.current.id);
       if (pan.current && !pan.current.moved && pan.current.clearOnClick && (sel || groupFocus)) {
         onClearFocus?.();
@@ -336,14 +415,41 @@ export default function CanvasGraph({
     };
   });
 
+  // Unmount-only: cancel a pan frame still pending if we unmount mid-drag.
+  // This is a SEPARATE empty-deps effect on purpose — the listener effect above
+  // re-runs (and re-cleans) on every render, so cancelling the rAF there would
+  // drop in-flight pan frames on unrelated re-renders (e.g. hover over a node).
+  useEffect(() => () => {
+    if (panRaf.current != null) cancelAnimationFrame(panRaf.current);
+    if (wheelRaf.current != null) cancelAnimationFrame(wheelRaf.current);
+    if (dragRaf.current != null) cancelAnimationFrame(dragRaf.current);
+  }, []);
+
   const onWheel = (event: React.WheelEvent) => {
+    // Coalesce wheel/trackpad zoom to one update per frame. Trackpad pinch fires
+    // as densely as pointermove; one setCam per event re-rendered the whole
+    // workspace and thrashed layout. Accumulate the PRODUCT of per-event zoom
+    // factors (not a sum of deltas) — this is mathematically identical to the
+    // old per-event multiply on k, so zoom speed is unchanged and no single
+    // frame can drive the factor ≤0. Anchor to the latest cursor point (the only
+    // approximation: a few px of drift if the cursor moves mid-frame).
     const point = vb(event);
-    setCam((c) => {
-      const nextK = Math.max(0.45, Math.min(2.6, c.k * (1 - event.deltaY * 0.0012)));
-      const wx = (point.x - c.x) / c.k;
-      const wy = (point.y - c.y) / c.k;
-      return { x: point.x - wx * nextK, y: point.y - wy * nextK, k: nextK };
-    });
+    const acc = wheelAcc.current;
+    wheelAcc.current = { factor: (acc?.factor ?? 1) * (1 - event.deltaY * 0.0012), x: point.x, y: point.y };
+    if (wheelRaf.current == null) {
+      wheelRaf.current = requestAnimationFrame(() => {
+        wheelRaf.current = null;
+        const a = wheelAcc.current;
+        wheelAcc.current = null;
+        if (!a) return;
+        setCam((c) => {
+          const nextK = Math.max(0.45, Math.min(2.6, c.k * a.factor));
+          const wx = (a.x - c.x) / c.k;
+          const wy = (a.y - c.y) / c.k;
+          return { x: a.x - wx * nextK, y: a.y - wy * nextK, k: nextK };
+        });
+      });
+    }
   };
 
   return (
@@ -357,10 +463,11 @@ export default function CanvasGraph({
         pan.current = {
           sx: event.clientX,
           sy: event.clientY,
-          cx: cam.x,
-          cy: cam.y,
+          lastX: event.clientX,
+          lastY: event.clientY,
           moved: false,
-          clearOnClick: !insideAreaBand(point)
+          clearOnClick: !insideAreaBand(point),
+          rect: svgRef.current!.getBoundingClientRect()
         };
       }}
       onWheel={onWheel}
@@ -438,11 +545,11 @@ export default function CanvasGraph({
                 stroke="transparent"
                 strokeWidth={Math.max(13, style.width + 10)}
                 opacity={0}
-                onPointerEnter={() => setHoverEdge(key)}
-                onPointerMove={() => setHoverEdge(key)}
+                onPointerEnter={() => hoverEdgeSet(key)}
+                onPointerMove={() => hoverEdgeSet(key)}
                 onPointerLeave={() => setHoverEdge(null)}
-                onMouseEnter={() => setHoverEdge(key)}
-                onMouseMove={() => setHoverEdge(key)}
+                onMouseEnter={() => hoverEdgeSet(key)}
+                onMouseMove={() => hoverEdgeSet(key)}
                 onMouseLeave={() => setHoverEdge(null)}
                 style={{ cursor: hoverLabel ? "help" : "default", pointerEvents: "stroke" }}
               >
@@ -476,8 +583,8 @@ export default function CanvasGraph({
                 key={node.id}
                 opacity={opacity}
                 style={{ cursor: "grab", transition: "opacity .2s" }}
-                onMouseEnter={() => !drag.current && onHover(node.id)}
-                onMouseLeave={() => !drag.current && onHover(null)}
+                onMouseEnter={() => hoverNode(node.id)}
+                onMouseLeave={() => hoverNode(null)}
                 onPointerDown={(event) => {
                   event.stopPropagation();
                   const point = vb(event);
@@ -542,8 +649,8 @@ export default function CanvasGraph({
                 key={node.id}
                 opacity={opacity}
                 style={{ cursor: "grab", transition: "opacity .2s" }}
-                onMouseEnter={() => !drag.current && onHover(node.id)}
-                onMouseLeave={() => !drag.current && onHover(null)}
+                onMouseEnter={() => hoverNode(node.id)}
+                onMouseLeave={() => hoverNode(null)}
                 onPointerDown={(event) => {
                   event.stopPropagation();
                   const point = vb(event);
@@ -611,8 +718,8 @@ export default function CanvasGraph({
               key={node.id}
               opacity={opacity}
               style={{ cursor: "grab", transition: "opacity .2s" }}
-              onMouseEnter={() => !drag.current && onHover(node.id)}
-              onMouseLeave={() => !drag.current && onHover(null)}
+              onMouseEnter={() => hoverNode(node.id)}
+              onMouseLeave={() => hoverNode(null)}
               onPointerDown={(event) => {
                 event.stopPropagation();
                 const point = vb(event);
@@ -700,8 +807,8 @@ export default function CanvasGraph({
               key={node.id}
               opacity={opacity}
               style={{ cursor: "pointer", transition: "opacity .2s" }}
-              onMouseEnter={() => onHover(node.id)}
-              onMouseLeave={() => onHover(null)}
+              onMouseEnter={() => hoverNode(node.id)}
+              onMouseLeave={() => hoverNode(null)}
               onClick={() => onSelect(node.id)}
             >
               {/* private VALUE component — the user's input, value-forward. Name on top

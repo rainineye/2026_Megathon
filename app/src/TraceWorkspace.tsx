@@ -60,6 +60,35 @@ export default function TraceWorkspace() {
   const [sel, setSel] = useState<string | null>(null);
   const [groupFocus, setGroupFocus] = useState<FactorGroup | null>(null);   // a focused lane (click its background)
   const [cam, setCam] = useState({ x: 40, y: 20, k: OVERVIEW_K });   // default overview scale
+  const camRef = useRef(cam);
+  camRef.current = cam;   // live mirror so a glide can read the current cam as its start
+  const camAnim = useRef<number | null>(null);
+  const cancelCamAnim = () => { if (camAnim.current != null) { cancelAnimationFrame(camAnim.current); camAnim.current = null; } };
+  // Glide the camera to a target instead of snapping. Programmatic framing
+  // (focus a node, fit, default view, frame an area) eases over ~380ms; manual
+  // pan/zoom interrupt any in-flight glide via setCamInteractive below.
+  const animateCamTo = (target: { x: number; y: number; k: number }, ms = 380) => {
+    cancelCamAnim();
+    const from = camRef.current;
+    const near = Math.abs(from.x - target.x) < 0.5 && Math.abs(from.y - target.y) < 0.5 && Math.abs(from.k - target.k) < 0.002;
+    if (ms <= 0 || near) { setCam(target); return; }
+    const start = performance.now();
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);   // easeOutCubic
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / ms);
+      const e = ease(t);
+      setCam({ x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e, k: from.k + (target.k - from.k) * e });
+      camAnim.current = t < 1 ? requestAnimationFrame(step) : null;
+    };
+    camAnim.current = requestAnimationFrame(step);
+  };
+  // Manual camera changes from the canvas (drag-pan, wheel-zoom) must interrupt
+  // an in-flight glide so the tween and the gesture don't fight.
+  const setCamInteractive = (updater: (c: { x: number; y: number; k: number }) => { x: number; y: number; k: number }) => {
+    cancelCamAnim();
+    setCam(updater);
+  };
+  useEffect(() => () => cancelCamAnim(), []);   // stop any glide on unmount
   const [protocolRun, setProtocolRun] = useState<ProtocolRun | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -81,12 +110,12 @@ export default function TraceWorkspace() {
 
   // keyboard / pinch zoom should affect the CANVAS, not the whole page.
   useEffect(() => {
-    const applyZoom = (f: number) => setCam((c) => { const p = { x: 470, y: 300 }; const nk = Math.max(0.45, Math.min(2.6, c.k * f)); const wx = (p.x - c.x) / c.k, wy = (p.y - c.y) / c.k; return { x: p.x - wx * nk, y: p.y - wy * nk, k: nk }; });
+    const applyZoom = (f: number) => setCamInteractive((c) => { const p = { x: 470, y: 300 }; const nk = Math.max(0.45, Math.min(2.6, c.k * f)); const wx = (p.x - c.x) / c.k, wy = (p.y - c.y) / c.k; return { x: p.x - wx * nk, y: p.y - wy * nk, k: nk }; });
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       if (e.key === "=" || e.key === "+") { e.preventDefault(); applyZoom(1.2); }
       else if (e.key === "-" || e.key === "_") { e.preventDefault(); applyZoom(1 / 1.2); }
-      else if (e.key === "0") { e.preventDefault(); setCam({ x: 0, y: 0, k: 1 }); }
+      else if (e.key === "0") { e.preventDefault(); animateCamTo({ x: 0, y: 0, k: 1 }); }
     };
     const onWheel = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault(); }; // stop trackpad pinch page-zoom
     window.addEventListener("keydown", onKey);
@@ -128,7 +157,7 @@ export default function TraceWorkspace() {
   const dirty = JSON.stringify(activeVars.slice().sort()) !== JSON.stringify(appliedActive.slice().sort())
     || activeVars.some((k) => vars[k] !== applied[k]);
   const moveFactor = (id: string, x: number, y: number) => setFactors((fs) => fs.map((f) => f.id === id ? { ...f, x, y } : f));
-  const zoom = (f: number) => setCam((c) => { const p = { x: 470, y: 300 }; const nk = Math.max(0.45, Math.min(2.6, c.k * f)); const wx = (p.x - c.x) / c.k, wy = (p.y - c.y) / c.k; return { x: p.x - wx * nk, y: p.y - wy * nk, k: nk }; });
+  const zoom = (f: number) => setCamInteractive((c) => { const p = { x: 470, y: 300 }; const nk = Math.max(0.45, Math.min(2.6, c.k * f)); const wx = (p.x - c.x) / c.k, wy = (p.y - c.y) / c.k; return { x: p.x - wx * nk, y: p.y - wy * nk, k: nk }; });
   const fitView = () => {
     const boxes = [
       ...allFactors.map((f) => ({ x: f.x, y: f.y, ...nodeSize(f) })),
@@ -144,7 +173,7 @@ export default function TraceWorkspace() {
     const fitK = Math.min((VBW - 2 * pad) / cw, (VBH - 2 * pad) / ch);
     const k = Math.min(2.6, Math.max(LEGIBLE_K, fitK));
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    setCam({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
+    animateCamTo({ x: VBW / 2 - cx * k, y: VBH / 2 - cy * k, k });
   };
   // frame an arbitrary world rect into the VISIBLE viewport — left of the inspector panel AND
   // above the bottom dock — so a focused area fills the viewport instead of sliding under them.
@@ -156,7 +185,7 @@ export default function TraceWorkspace() {
     const pad = 64, cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY);
     const k = Math.max(0.4, Math.min(maxK, Math.min((visW - 2 * pad) / cw, (visH - 2 * pad) / ch)));
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    setCam({ x: visW / 2 - cx * k, y: visH / 2 - cy * k, k });
+    animateCamTo({ x: visW / 2 - cx * k, y: visH / 2 - cy * k, k });
   };
   // After plugging variables in: light up the WHOLE personal-variable area (the value
   // cards + the personal-decision driver they feed) and frame the camera on it. Selecting
@@ -176,7 +205,7 @@ export default function TraceWorkspace() {
     frameRect(Math.min(...xs) - 40, Math.min(...ys) - 50, Math.max(...xe) + 40, Math.max(...ye) + 50, 1.15);
   };
   // DEFAULT view: horizontal reasoning overview, centered at the current overview scale.
-  const defaultView = () => {
+  const defaultView = (animate = true) => {
     const ns = factors.length ? factors : allFactors;
     if (!ns.length) return;
     const boxes = ns.map((f) => ({ x: f.x, y: f.y, ...nodeSize(f) }));
@@ -190,7 +219,7 @@ export default function TraceWorkspace() {
     const panelPx = rightOn ? 360 : 0;
     const visW = rect ? ((rect.width - panelPx) / rect.width) * VBW : VBW * 0.82;
     const visH = rect ? ((rect.height - dockH) / rect.height) * VBH : VBH * 0.82;
-    setCam({ x: visW / 2 - cx * k, y: visH / 2 - cy * k, k });
+    animateCamTo({ x: visW / 2 - cx * k, y: visH / 2 - cy * k, k }, animate ? 380 : 0);
   };
   const focusComponent = (id: string) => {
     const factor = allFactors.find((f) => f.id === id) || null;
@@ -212,7 +241,7 @@ export default function TraceWorkspace() {
     const w = privateNode ? 120 : size?.w ?? CW;
     const h = privateNode ? 46 : size?.h ?? CH;
     const k = privateNode ? 1.72 : 1.42;
-    setCam({
+    animateCamTo({
       x: viewCenterX - (node.x + w / 2) * k,
       y: viewCenterY - (node.y + h / 2) * k,
       k
@@ -249,7 +278,7 @@ export default function TraceWorkspace() {
   });
 
   // settle to the default home view once the graph data loads.
-  useEffect(() => { defaultView(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [source]);
+  useEffect(() => { defaultView(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [source]);
 
   // run the core protocol over the edited variables → commit the conditioned snapshot.
   const runProtocol = async () => {
@@ -286,7 +315,7 @@ export default function TraceWorkspace() {
   // settle to the default home view once the factor tree first arrives. useLayoutEffect so
   // the FIRST painted frame is already centered at OVERVIEW_K — no left-aligned flash/jump.
   useLayoutEffect(() => {
-    if (factors.length && !prevActive.current) { defaultView(); prevActive.current = 1; }
+    if (factors.length && !prevActive.current) { defaultView(false); prevActive.current = 1; }
   }, [factors.length]);
 
   return (
@@ -299,7 +328,7 @@ export default function TraceWorkspace() {
         <div ref={canvasRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: K.paper }}>
           <CanvasGraph factors={allFactors} edges={allEdges} weights={allWeights} lead={leadId} personal={personal} sel={sel} hover={hover}
             groupFocus={groupFocus} onSelectGroup={focusGroup}
-            cam={cam} setCam={setCam} onHover={setHover} onSelect={focusComponent} onClearFocus={exitFocus} onMove={moveFactor} />
+            cam={cam} setCam={setCamInteractive} onHover={setHover} onSelect={focusComponent} onClearFocus={exitFocus} onMove={moveFactor} />
           <NavRail onZoom={zoom} onFit={fitView} k={cam.k} />
           <LegendBar onFocusGroup={focusGroupArea} />
         </div>
